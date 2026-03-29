@@ -27,7 +27,7 @@ export ROS_DOMAIN_ID=14
 양측(PC, 로봇)의 워크스페이스에 저장소를 동기화합니다.
 ```zsh
 cd ~/ros_ws/src
-git clone https://github.com/Minssuung/shoppinkki.git
+git clone https://github.com/woolimi/shoppinkki.git
 cd ~/ros_ws
 ```
 
@@ -35,7 +35,7 @@ cd ~/ros_ws
 
 ### 4.1 서버 노드 실행 (PC)
 ```zsh
-colcon build --packages-select pinky_offload_vision
+colcon build --symlink-install --packages-select pinky_offload_vision --base-paths src/shoppinkki
 source install/local_setup.zsh
 
 ros2 launch pinky_offload_vision offload.launch.py
@@ -43,7 +43,7 @@ ros2 launch pinky_offload_vision offload.launch.py
 
 ### 4.2 엣지 노드 실행 (Raspberry Pi)
 ```zsh
-colcon build --packages-select pinky_vision_streamer
+colcon build --symlink-install --packages-select pinky_vision_streamer --base-paths src/shoppinkki
 source install/local_setup.zsh
 
 # 1. 로봇 하드웨어 시스템 제어 권한 획득
