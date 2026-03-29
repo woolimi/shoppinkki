@@ -1,9 +1,6 @@
 # ShopPinkki
 
 ## 1. 개요 (Overview)
-ShopPinkki는 ROS 2 (Jazzy) 환경을 기반으로 설계된 AI 비전 트래킹 오프로딩 시스템입니다.
-
-라즈베리파이의 연산 부하를 줄이기 위해 딥러닝 추론(YOLOv8, MediaPipe, ReID)을 PC 서버로 완전히 분리한 **분산형 아키텍처**를 채택했습니다. 로봇은 오직 카메라 스트리밍과 모터 제어만 담당합니다.
 
 ## 2. 아키텍처 및 패키지 구성
 네트워크 도메인을 통해 분할된 2개의 ROS 2 패키지로 구성됩니다.
@@ -24,13 +21,13 @@ PC에 AI 라이브러리를 먼저 설치합니다.
 pip install ultralytics mediapipe
 ```
 
-PC와 라즈베리파이 **양측 모두** 동일한 ROS 도메인을 사용해야 합니다. `.bashrc` 또는 `.zshrc`에 추가하거나 실행 전 매번 입력합니다.
+PC와 라즈베리파이 **양측 모두** 동일한 ROS 도메인을 사용해야 합니다. `.zshrc`에 추가하거나 실행 전 매번 입력합니다.
 ```bash
 export ROS_DOMAIN_ID=14
 ```
 
 양측 워크스페이스에 저장소를 클론합니다.
-```bash
+```zsh
 cd ~/ros_ws/src
 git clone https://github.com/woolimi/shoppinkki.git
 cd ~/ros_ws
@@ -41,7 +38,7 @@ cd ~/ros_ws
 > **실행 순서**: PC 서버 → 핑키(라즈베리파이) 순으로 실행합니다.
 
 ### 4.1 PC (서버) 실행
-```bash
+```zsh
 cd ~/ros_ws
 colcon build --packages-select pinky_offload_vision --base-paths src/shoppinkki
 source install/local_setup.zsh
@@ -53,7 +50,7 @@ ros2 launch pinky_offload_vision offload.launch.py
 
 ### 4.2 라즈베리파이 (로봇) 실행
 **터미널 1** - 로봇 하드웨어 초기화:
-```bash
+```zsh
 cd ~/ros_ws
 colcon build --packages-select pinky_vision_streamer --base-paths src/shoppinkki
 source install/local_setup.zsh
@@ -62,7 +59,7 @@ ros2 launch pinky_bringup bringup_robot.launch.xml
 ```
 
 **터미널 2** - 카메라 스트리머 및 모터 제어기 구동:
-```bash
+```zsh
 cd ~/ros_ws && source install/local_setup.zsh
 
 ros2 run pinky_vision_streamer camera_publisher &
