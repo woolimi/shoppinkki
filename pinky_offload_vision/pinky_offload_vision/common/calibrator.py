@@ -14,10 +14,10 @@ POSE_HOLD_FRAMES_FALLBACK = 20  # MediaPipe가 없을 때
 
 CALIBRATION_SEQUENCE = ['FRONT', 'RIGHT', 'BACK', 'LEFT']
 POSE_INSTRUCTIONS = {
-    'FRONT': "1. 정면을 보고 서주세요",
-    'RIGHT': "2. 오른쪽으로 돌아 서주세요",
-    'BACK':  "3. 뒤를 돌아 서주세요",
-    'LEFT':  "4. 왼쪽으로 돌아 서주세요"
+    'FRONT': "1. Stand FACE forward",
+    'RIGHT': "2. Turn RIGHT",
+    'BACK':  "3. Turn BACK",
+    'LEFT':  "4. Turn LEFT"
 }
 
 class Calibrator:
@@ -55,7 +55,7 @@ class Calibrator:
         self._hold_count = 0
         self.owner_templates = []
         self.is_owner_registered = False
-        self._message = "캘리브레이션을 준비하세요 (정면)"
+        self._message = "Get ready for Calibration (Front)"
 
     def clear(self):
         self.owner_templates = []
@@ -75,7 +75,7 @@ class Calibrator:
                 pickle.dump(self.owner_templates, f)
             self.is_owner_registered = True
             self.is_calibrating = False
-            self._message = "소유자 등록 완료!"
+            self._message = "Owner Registered!"
             return
 
         expected_pose = CALIBRATION_SEQUENCE[self._current_step]
@@ -93,7 +93,7 @@ class Calibrator:
                 self._hold_count = 0
         else:
             self._hold_count = max(0, self._hold_count - 1)
-            self._message = f"{POSE_INSTRUCTIONS[expected_pose]} (자세를 유지하세요)"
+            self._message = f"{POSE_INSTRUCTIONS[expected_pose]} (Hold Pose...)"
 
     def _detect_pose_direction(self, frame, x1, y1, x2, y2):
         if not self.pose:

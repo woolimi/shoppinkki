@@ -14,7 +14,7 @@ def generate_launch_description():
                 'reid_threshold': 0.55,
                 'tracking_threshold': 0.45,
                 'reid_confirm_frames': 3,
-                'jpeg_quality': 40,
+                'jpeg_quality': 80,
             }],
         ),
         Node(

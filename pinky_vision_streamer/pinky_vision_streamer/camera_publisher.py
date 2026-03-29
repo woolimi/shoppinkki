@@ -20,7 +20,7 @@ class CameraPublisherNode(Node):
         super().__init__('camera_publisher_node')
         
         # JPEG 압축 화질 파라미터 (네트워크 속도 고려)
-        self.declare_parameter('jpeg_quality', 40)
+        self.declare_parameter('jpeg_quality', 80)
         
         # 영상 퍼블리셔 (CompressedImage)
         self.publisher_ = self.create_publisher(

@@ -30,7 +30,7 @@ class ServerTrackerNode(Node):
         self.declare_parameter('reid_threshold', 0.55)
         self.declare_parameter('tracking_threshold', 0.45)
         self.declare_parameter('reid_confirm_frames', 3)
-        self.declare_parameter('jpeg_quality', 40)
+        self.declare_parameter('jpeg_quality', 80)
 
         # 수신 (핑키 카메라)
         self.sub_image = self.create_subscription(
