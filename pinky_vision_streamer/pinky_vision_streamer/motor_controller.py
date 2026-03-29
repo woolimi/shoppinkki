@@ -89,7 +89,8 @@ def main(args=None):
         # 종료 시 무조건 로봇 정지
         node.pub_cmd_vel.publish(Twist())
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

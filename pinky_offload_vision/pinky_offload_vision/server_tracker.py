@@ -199,7 +199,7 @@ class ServerTrackerNode(Node):
         pt.x = person['center'][0] / w
         pt.y = person['center'][1] / h
         # z값에 Bounding Box 세로 길이의 비율(크기)을 넣어 거리를 추정합니다.
-        pt.z = float(person['bbox'][3] - person['bbox'][1]) / h
+        pt.z = float(person['box'][3] - person['box'][1]) / h
         self.pub_target.publish(pt)
 
     def _publish_debug(self, frame):

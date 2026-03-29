@@ -81,7 +81,8 @@ def main(args=None):
         node.get_logger().info("카메라 퍼블리셔를 종료합니다.")
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':
