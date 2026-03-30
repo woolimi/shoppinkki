@@ -9,22 +9,21 @@
 #include "ws2811/ws2811.h"
 
 
-ws2811_t ledstring =
-{
-    .freq = WS2811_TARGET_FREQ,
-    .dmanum = 10,
-    .channel =
-    {
-        [0] =
-        {
-            .gpionum = 19,
-            .invert = 0,
-            .count = 8,
-            .strip_type = WS2811_STRIP_GBR,
-            .brightness = 255,
-        },
-    },
-};
+// Initialize using C++-safe value initialization (no C99 designated initializers),
+// then set only the fields we care about. Unset fields default to zero.
+ws2811_t ledstring = []() {
+    ws2811_t s{};
+    s.freq = WS2811_TARGET_FREQ;
+    s.dmanum = 10;
+
+    s.channel[0].gpionum = 19;
+    s.channel[0].invert = 0;
+    s.channel[0].count = 8;
+    s.channel[0].strip_type = WS2811_STRIP_GBR;
+    s.channel[0].brightness = 255;
+
+    return s;
+}();
 
 class PinkyLampControl : public rclcpp::Node
 {
