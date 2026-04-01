@@ -21,7 +21,7 @@
 | [ ] | POST /login → USER/CARD 인증 |
 | [ ] | 로그인 시 `ROBOT.active_user_id` 중복 확인 (SR-19) |
 | [ ] | 인증 성공 → `ROBOT.active_user_id = user_id` 갱신 |
-| [ ] | Pi DB SESSION 레코드 생성 (is_active=True) |
+| [ ] | Pi DB SESSION 레코드 생성 (`is_active=1`, `expires_at` 설정 — 유효 조건: `is_active=1 AND expires_at > now()`) |
 | [ ] | Pi DB CART 레코드 SESSION과 동시 생성 (atomic, 같은 트랜잭션) |
 | [ ] | control_service가 ROS publish → `/robot_<id>/cmd`: `start_session` (customer_web 직접 publish 아님) |
 | [ ] | SM: `IDLE → REGISTERING` 전환 |
@@ -47,7 +47,7 @@
 사용자 QR 스캔
     │
     ▼
-브라우저 → /cart/<robot_id> 접속 (customer_web, 포트 5000)
+브라우저 → /cart/<robot_id> 접속 (customer_web, 포트 8501)
     │
     ▼
 customer_web: GET /cart/<robot_id>
@@ -89,7 +89,7 @@ shoppinkki_core: sm.trigger('start_session')
 |---|---|
 | SM 상태 | REGISTERING |
 | ROBOT.active_user_id | 로그인한 user_id |
-| Pi DB SESSION | 새 레코드 생성 (is_active=True) |
+| Pi DB SESSION | 새 레코드 생성 (`is_active=1 AND expires_at > now()` 조건 만족) |
 | Pi DB CART | SESSION과 동시 생성 (session_id 동일, 1:1) |
 | LCD | QR 코드 → 등록 안내 화면 |
 | 브라우저 | pose_scan.html (PERSON) 또는 main.html (ARUCO) |

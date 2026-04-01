@@ -165,9 +165,9 @@ class ControlServiceNode(rclpy.node.Node):
 
 ```python
 # admin_app/main_window.py
-from PyQt5.QtWidgets import QListWidget, QListWidgetItem, QPushButton, QHBoxLayout
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtGui import QColor
+from PyQt6.QtWidgets import QListWidget, QListWidgetItem, QPushButton, QHBoxLayout
+from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtGui import QColor
 
 EVENT_COLORS = {
     'SESSION_START':    '#d4edda',  # 초록
@@ -228,7 +228,7 @@ class AdminMainWindow(QMainWindow):
 | 1 | **ALARM_LOG 중복** | ALARM_RAISED/DISMISSED를 EVENT_LOG에 기록하면 ALARM_LOG와 이중 저장됨 | EVENT_LOG의 ALARM 이벤트는 참조용 요약 기록. ALARM_LOG가 원본(resolved_at 포함). 조회 시 ALARM_LOG 우선 |
 | 2 | **DB Lock 필요** | log_event()는 ROS 스레드, cleanup 스레드 등 여러 스레드에서 호출됨 | `threading.Lock()` (`self._db_lock`) 으로 모든 DB 접근 보호 (scenario_16 모순 #2 통합) |
 | 3 | **MODE_CHANGE 로깅 시점** | control_service는 Pi SM 전환을 `/robot_<id>/status`의 `mode` 필드 변경으로만 감지함. 50ms 이하 짧은 상태는 누락 가능 | demo 용도로 1~2Hz 갱신 주기 내 변경만 기록. 중요 이벤트(ALARM, SESSION)는 즉시 토픽으로 별도 수신하므로 누락 없음 |
-| 4 | **EVENT_LOG 미정의 ERD** | `docs/erd.md`에 EVENT_LOG 테이블 없음 | erd.md 갱신 필요 |
+| 4 | **EVENT_LOG ERD** | `docs/erd.md`에 EVENT_LOG 테이블 없었음 | ✅ 해결 — erd.md에 EVENT_LOG 테이블 추가 완료 |
 | 5 | **REST `/events` 채널 미정의** | `interface_specification.md` 채널 E에 `/events` 엔드포인트 없음 | interface_specification.md 채널 E 추가 필요 |
 
 ---

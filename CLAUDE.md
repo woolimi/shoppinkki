@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Robot platform: Pinky Pro (110×120×142mm), Raspberry Pi 5 (8GB)
 - Demo environment: 1.4×1.8m miniature shopping mall
 - ROS 2 Jazzy / Ubuntu 24.04
-- Two robots: Pinky #54 (`192.168.x.54`), Pinky #18 (`192.168.x.18`)
+- Two robots: Pinky #54 (`192.168.102.54`), Pinky #18 (`192.168.102.18`)
 
 ## Build
 
@@ -25,6 +25,17 @@ source install/setup.zsh
 ```
 
 **Architecture restriction:** `pinky_lamp_control` and `pinky_led` only build on ARM64 (aarch64/Raspberry Pi). They will be skipped automatically on x86 PC.
+
+### Python Dependencies (pip)
+
+```bash
+pip install transitions          # SM 라이브러리 (shoppinkki_core)
+pip install PyQt6                # 관제 앱 (admin_app, PC 전용)
+pip install flask flask-socketio # customer_web
+```
+
+**macOS + conda 환경 주의:** `ros2 run admin_app admin_app` 실행 시 Qt cocoa 플러그인을 못 찾는 문제가 발생할 수 있음.
+`admin_app/main.py`의 `_ensure_qt_platform_plugin()`이 자동으로 경로를 잡아줌 — 별도 설정 불필요.
 
 ## Testing & Linting
 
@@ -56,11 +67,37 @@ ros2 run nav2_map_server map_saver_cli -f "<map_name>"
 ```bash
 # [On Pinky]
 ros2 launch pinky_bringup bringup_robot.launch.xml
-ros2 launch pinky_navigation bringup_launch.xml map:=<map_name.yaml>
+ros2 launch shoppinkki_nav navigation.launch.py
 
 # [On PC]
 ros2 launch pinky_navigation nav2_view.launch.xml
 # Use RViz: "2D Pose Estimate" to localize, then "Nav2 Goal" to navigate
+```
+
+### ShopPinkki 전체 스택 실행
+```bash
+# [On Pinky]
+ros2 launch pinky_bringup bringup_robot.launch.xml
+ros2 launch shoppinkki_nav navigation.launch.py
+ros2 run shoppinkki_core main_node
+
+# [On PC — 관제 앱 (control_service 포함)]
+ros2 run admin_app admin_app
+
+# [On PC — 고객 웹앱]
+python services/customer_web/app.py   # → http://localhost:8501
+
+# [On PC — AI 서버]
+cd services/ai_server && docker compose up
+```
+
+### DB 관리
+```bash
+# 중앙 서버 DB 시딩 (대화형: reset / replace / 기본 선택)
+~/ros_ws/scripts/seed.sh
+
+# Pi 5 로컬 DB 초기화
+python -c "from shoppinkki_core.db import init_db; init_db()"
 ```
 
 ### Simulation (Gazebo)
@@ -87,8 +124,28 @@ ros2 topic echo /amcl_pose       # current robot pose
 ### Two-Layer Structure
 
 ```
+ros_ws/
+├── src/
+│   ├── pinky_pro/          ← 하드웨어 플랫폼 패키지 (git submodule, 수정 금지)
+│   ├── shoppinkki/         ← Pi 5 실행 ROS2 패키지
+│   │   ├── shoppinkki_interfaces/   ← ABC 인터페이스 + Mock 구현체
+│   │   ├── shoppinkki_core/         ← 메인 노드 (SM + BT + HW + Pi DB)
+│   │   ├── shoppinkki_nav/          ← Nav2 BT + BoundaryMonitor + shop 맵
+│   │   └── shoppinkki_perception/   ← YOLO/ArUco/QR/Pose
+│   └── control_center/     ← 서버 PC 실행 ROS2 패키지
+│       ├── control_service/         ← ROS2 노드 + TCP + REST + 중앙 DB
+│       └── admin_app/               ← PyQt6 관제 대시보드
+├── services/
+│   ├── customer_web/        ← Flask + SocketIO 고객 웹앱 (포트 8501)
+│   └── ai_server/           ← Docker: YOLO(TCP:5005) + LLM(REST:8000)
+└── scripts/
+    └── seed.sh              ← 중앙 DB 시딩 대화형 스크립트
+```
+
+```
 src/pinky_pro/      ← Hardware platform packages (git submodule)
 src/shoppinkki/     ← ShopPinkki application packages
+src/control_center/ ← Server-side packages
 ```
 
 **`src/pinky_pro/`** provides foundational drivers:
@@ -105,15 +162,15 @@ src/shoppinkki/     ← ShopPinkki application packages
 **`src/shoppinkki/`** provides application logic (Pi 5 실행):
 - `shoppinkki_interfaces` — Python Protocol 인터페이스 + Mock 구현체 (`protocols.py`, `mocks.py`)
 - `shoppinkki_core` — 메인 노드. SM(9개 상태) + BT Runner + HW 제어(LED, LCD, 부저) + Pi SQLite DB
-- `shoppinkki_nav` — Nav2 기반 BT (BTWaiting, BTGuiding, BTReturning) + BoundaryMonitor
+- `shoppinkki_nav` — Nav2 기반 BT (BTWaiting, BTGuiding, BTReturning) + BoundaryMonitor. shop 맵 포함
 - `shoppinkki_perception` — YOLO+ReID / ArUco 추종 / QR 스캔 / 포즈 스캔
 
 **`src/control_center/`** provides server-side logic (서버 PC 실행):
 - `control_service` — ROS2 노드 + TCP 서버(8080) + REST API(8080) + 중앙 SQLite DB. Pi ↔ customer_web 중계. `QueueManager` 포함
-- `admin_app` — PyQt + rclpy 관제 대시보드. control_service와 동일 프로세스(직접 참조, 채널 D)
+- `admin_app` — PyQt6 + rclpy 관제 대시보드. control_service와 **동일 프로세스**(직접 참조, 채널 D). `AdminAppBridge(QObject)`가 ROS 스레드 → Qt 메인 스레드 신호 중계
 
 **`services/`** provides non-ROS services:
-- `customer_web` — Flask + SocketIO 고객 웹앱 (포트 5000). 스마트폰 브라우저용
+- `customer_web` — Flask + SocketIO 고객 웹앱 (**포트 8501**). 스마트폰 브라우저용
 - `ai_server` — Docker Compose. YOLO 추론 서버(TCP:5005) + LLM 자연어 검색(REST:8000)
 
 ### Application Architecture
@@ -204,11 +261,11 @@ src/shoppinkki/     ← ShopPinkki application packages
 |---|---|---|
 | `USER` | user_id, password_hash | 사용자 계정 |
 | `CARD` | card_id, user_id | 결제 카드 정보 |
-| `ZONE` | zone_id, zone_name, waypoint_x/y/theta | 구역 Nav2 Waypoint. ID 1~8: 상품, 100~: 특수 |
-| `PRODUCT` | product_id, product_name, zone_id | 상품명 → 구역 매핑 |
+| `ZONE` | zone_id, zone_name, zone_type, waypoint_x/y/theta | 구역 Waypoint. zone_type: `product`(1~8) / `special`(100~) |
+| `PRODUCT` | product_id, product_name, price, zone_id | 상품명 → 구역 매핑 |
 | `BOUNDARY_CONFIG` | description, x_min/max, y_min/max | 도난 경계 + 결제 구역 좌표 |
-| `ROBOT` | robot_id, current_mode, pos_x/y, battery_level, last_seen, active_user_id | 로봇 실시간 상태 |
-| `ALARM_LOG` | robot_id, event_type, occurred_at, resolved_at | 알람 이벤트 (resolved_at=NULL이면 미처리) |
+| `ROBOT` | robot_id, ip_address, current_mode, pos_x/y, battery_level, last_seen, active_user_id | 로봇 실시간 상태 |
+| `ALARM_LOG` | robot_id, user_id, event_type, occurred_at, resolved_at | 알람 이벤트 (resolved_at=NULL이면 미처리) |
 | `EVENT_LOG` | robot_id, user_id, event_type, event_detail, occurred_at | 전체 운용 이벤트 타임라인 (scenario_17) |
 
 **ROBOT.current_mode 값:** `IDLE` / `REGISTERING` / `TRACKING` / `SEARCHING` / `WAITING` / `ITEM_ADDING` / `GUIDING` / `RETURNING` / `ALARM` / `OFFLINE`
@@ -221,19 +278,19 @@ src/shoppinkki/     ← ShopPinkki application packages
 
 | 테이블 | 용도 |
 |---|---|
-| `SESSION` | 활성 세션 (session_id, is_active, expires_at) |
-| `POSE_DATA` | 포즈 스캔 4방향 HSV. 세션 종료 시 삭제 |
+| `SESSION` | session_id, robot_id, user_id, is_active, expires_at. 유효 조건: `is_active=1 AND expires_at > now()` |
+| `POSE_DATA` | session_id, direction, hsv_top_json, hsv_bottom_json. 세션 종료 시 삭제 |
 | `CART` | 세션당 1개. SESSION과 1:1 |
-| `CART_ITEM` | QR 스캔으로 추가된 상품 |
+| `CART_ITEM` | item_id, cart_id, product_name, price(데모용 QR값), added_at |
 
 ### 특수 구역 (ZONE 테이블 주요 ID)
 
 | zone_id | 구역명 | 용도 |
 |---|---|---|
-| 130 | 카트 입구 | 로봇 대기 구역 시작점 |
-| 140 | 카트 출구 (대기열 1번) | RETURNING 목적지. 사용자 QR 스캔 위치 |
-| 141 | 카트 출구 (대기열 2번) | 2번째 로봇 대기 위치 (scenario_18) |
-| 150 | 결제 구역 | BoundaryMonitor 결제 트리거 구역 |
+| 130 | 카트 입구 | special | 로봇 대기 구역 시작점 |
+| 140 | 카트 출구 (대기열 1번) | special | RETURNING 목적지. 사용자 QR 스캔 위치 |
+| 141 | 카트 출구 (대기열 2번) | special | 2번째 로봇 대기 위치 (scenario_18) |
+| 150 | 결제 구역 | special | BoundaryMonitor 결제 트리거 구역 |
 
 ## Key Parameters (`config.py`)
 
@@ -256,8 +313,9 @@ src/shoppinkki/     ← ShopPinkki application packages
 
 - **cleanup 스레드** (10s 주기): `last_seen < now - 30s` → `current_mode='OFFLINE'`, `active_user_id=NULL`
 - **QueueManager**: BTReturning이 `/queue/assign` 호출 시 zone 140 또는 141 배정. 1번 로봇 REGISTERING 감지 시 2번 로봇에 `admin_goto` 전송
-- **DB Lock**: `threading.Lock()` (`self._db_lock`) — ROS 스레드 + cleanup 스레드 + Flask 스레드 동시 접근 보호
+- **DB Lock**: `threading.Lock()` (`_lock`) — ROS 스레드 + cleanup 스레드 + Flask 스레드 동시 접근 보호
 - **SQLite UPDATE 주의**: `UPDATE ... ORDER BY ... LIMIT 1` — SQLite 미지원. 서브쿼리로 `log_id` 먼저 조회 필요
+- **admin_app 연동**: `ControlServiceNode(app_bridge=AdminAppBridge)` 로 주입. `app_bridge=None` 이면 standalone 동작
 
 ## Scenario Implementation Order (우선순위)
 
@@ -295,4 +353,4 @@ src/shoppinkki/     ← ShopPinkki application packages
 | `docs/scenarios/scenario_NN.md` | 시나리오별 테스트 플랜 (예제코드 + 모순점 + UI 검토 포함) |
 | `cheatsheet.md` | SLAM and navigation command reference |
 
-> **Note:** `src/shoppinkki/` current code is prototype/test code for validating YOLOv8+ReID. The final architecture is defined in `docs/` and is being implemented per `docs/scaffold_plan.md`.
+> **Note:** 스캐폴딩 완료. 각 패키지의 클래스/함수 스텁이 Mock으로 와이어링되어 있으며, 시나리오 구현 순서(`docs/scaffold_plan.md`)에 따라 실제 로직을 채워 나간다.

@@ -130,8 +130,8 @@ class ControlServiceNode(rclpy.node.Node):
 
 ```python
 # admin_app/main_window.py
-from PyQt5.QtCore import pyqtSignal, QTimer
-from PyQt5.QtWidgets import QMainWindow
+from PyQt6.QtCore import pyqtSignal, QTimer
+from PyQt6.QtWidgets import QMainWindow
 
 MAP_ORIGIN_X = -0.1   # shop.yaml origin[0]
 MAP_ORIGIN_Y = -0.1   # shop.yaml origin[1]

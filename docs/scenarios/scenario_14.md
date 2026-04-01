@@ -22,7 +22,7 @@
 | [ ] | control_service: `/robot_<id>/alarm` 수신 → ALARM_LOG 생성 |
 | [ ] | control_service → admin_app 직접 참조로 알람 이벤트 전달 (채널 D) |
 | [ ] | admin_app: 알람 패널에 이벤트 추가 (robot_id, event_type, occurred_at) |
-| [ ] | 알람 타입별 아이콘/색상 구분 표시 (THEFT=빨강, BATTERY=노랑, TIMEOUT=주황, PAYMENT_ERROR=보라) |
+| [ ] | 알람 타입별 아이콘/색상 구분 표시 (THEFT=빨강, BATTERY_LOW=노랑, TIMEOUT=주황, PAYMENT_ERROR=보라) |
 | [ ] | 해당 로봇 카드에 빨간 테두리 강조 표시 |
 | [ ] | [해제] 버튼 → `control_service.dismiss_alarm(robot_id)` 직접 호출 (채널 D) |
 | [ ] | control_service → `/robot_<id>/cmd`: `{"cmd": "dismiss_alarm"}` ROS publish |
@@ -229,7 +229,7 @@ def on_cmd(self, msg):
 | 2 | **다중 미해결 ALARM_LOG** | 같은 robot_id에 `resolved_at IS NULL` 행이 여러 개일 수 있음 (재기동 없이 여러 알람 발생) | dismiss_alarm은 가장 최근 발생 알람 1개만 해제. Pi의 `current_alarm`이 실제 현재 알람의 authoritative source |
 | 3 | **admin_app Thread Safety** | `on_alarm()` / `on_alarm_dismissed()`도 ROS 스레드에서 호출됨 | `pyqtSignal.emit()` 패턴 필수 (scenario_13과 동일) |
 | 4 | **customer_web push 누락** | scenario_11 체크리스트에서 `customer_web TCP push: {"type": "alarm", "event": ...}` 포함인데, scenario_14 흐름 코드에는 누락됨 | `dismiss_alarm` 후에도 customer_web에 `{"type": "alarm_dismissed"}` push 필요 |
-| 5 | **ALARM_LOG event_type 불일치** | ERD에는 `BATTERY` 표기, 채널 C 명세에는 `BATTERY_LOW` 표기 | 통일 필요 → `BATTERY_LOW`로 채택 (ERD 수정 대상) |
+| 5 | **ALARM_LOG event_type** | ERD에는 `BATTERY` 표기가 있었음 | ✅ 해결 — `BATTERY_LOW`로 ERD 통일 완료 |
 
 ---
 
