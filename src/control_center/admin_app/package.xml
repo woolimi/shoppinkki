@@ -1,17 +1,16 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>shoppinkki_core</name>
+  <name>admin_app</name>
   <version>0.0.1</version>
-  <description>ShopPinkki main node — SM + BT runner + HW control + Pi SQLite DB</description>
+  <description>ShopPinkki admin dashboard — PyQt6 + rclpy (same process as control_service)</description>
   <maintainer email="dev@example.com">dev</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_python</buildtool_depend>
   <depend>rclpy</depend>
-  <depend>std_msgs</depend>
-  <depend>shoppinkki_interfaces</depend>
-  <exec_depend>python3-transitions</exec_depend>
+  <depend>control_service</depend>
+  <exec_depend>python3-pyqt6</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

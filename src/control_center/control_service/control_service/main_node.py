@@ -23,8 +23,9 @@ CLEANUP_INTERVAL_SEC = 10
 class ControlServiceNode(Node):
     """Central control service node."""
 
-    def __init__(self):
+    def __init__(self, app_bridge=None):
         super().__init__('control_service')
+        self._app_bridge = app_bridge
 
         db.init_db()
         logger.info('[ControlService] DB initialized')
@@ -83,6 +84,8 @@ class ControlServiceNode(Node):
             battery=data.get('battery', 0),
             last_seen=now,
         )
+        if self._app_bridge:
+            self._app_bridge.on_robot_status_update(robot_id, data)
 
     def _on_alarm(self, msg: String, robot_id: str) -> None:
         try:
@@ -90,6 +93,9 @@ class ControlServiceNode(Node):
         except json.JSONDecodeError:
             return
         db.insert_alarm(robot_id, data.get('event', 'UNKNOWN'))
+        if self._app_bridge:
+            self._app_bridge.on_alarm(robot_id, data.get('event', 'UNKNOWN'),
+                                      datetime.now(timezone.utc).isoformat())
 
     def _on_cart(self, msg: String, robot_id: str) -> None:
         pass
