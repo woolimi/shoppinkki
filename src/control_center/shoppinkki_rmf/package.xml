@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>shoppinkki_rmf</name>
+  <version>0.1.0</version>
+  <description>
+    ShopPinkki Open-RMF Fleet Adapter.
+    RMF Traffic Negotiation으로 다중 로봇(54, 18) 경로 충돌 자동 조정.
+    기존 control_service 위에 레이어로 삽입 — Pi SM/BT 코드 변경 없음.
+  </description>
+  <maintainer email="woolim@example.com">woolim</maintainer>
+  <license>MIT</license>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+
+  <!-- Open-RMF (apt): ros-jazzy-rmf-fleet-adapter ros-jazzy-rmf-traffic ros-jazzy-rmf-task -->
+  <!-- pip: rmf-adapter -->
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

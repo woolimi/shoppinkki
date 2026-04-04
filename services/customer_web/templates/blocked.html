@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#4f46e5">
+  <title>ShopPinkki — 사용 불가</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    body { display: flex; align-items: flex-start; justify-content: center; min-height: 100vh; background: var(--bg); }
+  </style>
+</head>
+<body>
+  <div class="blocked-container">
+    <span class="blocked-icon">🚫</span>
+    <h2>카트 사용 불가</h2>
+    <p>
+      현재 다른 사용자가 이 카트를<br>
+      이용 중입니다.<br><br>
+      잠시 후 다시 시도해주세요.
+    </p>
+    <button class="btn btn-primary btn-full" onclick="location.reload()">
+      새로고침
+    </button>
+    <br>
+    <a href="/login" class="btn btn-outline btn-full" style="margin-top: 10px;">
+      로그인 화면으로
+    </a>
+  </div>
+</body>
+</html>

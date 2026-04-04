@@ -1,0 +1,192 @@
+# ShopPinkki RMF Nav Graph
+#
+# ⚠️  이 파일은 rmf_building_map_tools로 shop.building.yaml에서 자동 생성해야 합니다.
+#     아래 내용은 수동 편집한 참조용 템플릿입니다.
+#
+# 생성 명령:
+#   ros2 run rmf_building_map_tools building_map_generator nav \
+#       share/shoppinkki_rmf/maps/shop.building.yaml \
+#       share/shoppinkki_rmf/maps/shop_nav_graph.yaml
+#
+# RMF nav_graph 포맷 v2 (rmf_traffic)
+
+levels:
+  - name: "L1"
+
+    # 웨이포인트 (인덱스 순서 = shop.building.yaml vertices 순서)
+    vertices:
+      - x: 0.20
+        y: 0.20
+        name: "P1"
+        params:
+          is_parking_spot: {type: bool, value: true}
+          is_charger:       {type: bool, value: true}
+
+      - x: 0.50
+        y: 0.20
+        name: "P2"
+        params:
+          is_parking_spot: {type: bool, value: true}
+          is_charger:       {type: bool, value: true}
+
+      - x: 0.90
+        y: 0.20
+        name: "Entrance"
+        params: {}
+
+      - x: 0.90
+        y: 0.70
+        name: "Corridor_C"
+        params: {}
+
+      - x: 0.30
+        y: 0.70
+        name: "Corridor_W"
+        params: {}
+
+      - x: 1.50
+        y: 0.70
+        name: "Corridor_E"
+        params: {}
+
+      - x: 0.30
+        y: 1.10
+        name: "Zone1"
+        params:
+          pickup_zone: {type: bool, value: true}
+
+      - x: 0.70
+        y: 1.10
+        name: "Zone2"
+        params:
+          pickup_zone: {type: bool, value: true}
+
+      - x: 1.10
+        y: 1.10
+        name: "Zone3"
+        params:
+          pickup_zone: {type: bool, value: true}
+
+      - x: 1.50
+        y: 1.10
+        name: "Zone4"
+        params:
+          pickup_zone: {type: bool, value: true}
+
+      - x: 0.30
+        y: 0.40
+        name: "Zone5"
+        params:
+          pickup_zone: {type: bool, value: true}
+
+      - x: 0.70
+        y: 0.40
+        name: "Zone6"
+        params:
+          pickup_zone: {type: bool, value: true}
+
+      - x: 1.10
+        y: 0.40
+        name: "Zone7"
+        params:
+          pickup_zone: {type: bool, value: true}
+
+      - x: 1.50
+        y: 0.40
+        name: "Zone8"
+        params:
+          pickup_zone: {type: bool, value: true}
+
+      - x: 0.90
+        y: 1.10
+        name: "Checkout"
+        params:
+          is_holding_point: {type: bool, value: true}
+
+      - x: 0.90
+        y: 0.40
+        name: "Hub"
+        params: {}
+
+    # 레인 (from, to, 속성)
+    edges:
+      # 충전소 ↔ 입구
+      - v1_idx: 0
+        v2_idx: 2
+        bidirectional: true
+        edge_rgb: {r: 0.2, g: 0.8, b: 0.2}
+
+      - v1_idx: 1
+        v2_idx: 2
+        bidirectional: true
+        edge_rgb: {r: 0.2, g: 0.8, b: 0.2}
+
+      # 메인 복도
+      - v1_idx: 2
+        v2_idx: 3
+        bidirectional: true
+        edge_rgb: {r: 0.2, g: 0.2, b: 0.8}
+
+      - v1_idx: 3
+        v2_idx: 4
+        bidirectional: true
+        edge_rgb: {r: 0.2, g: 0.2, b: 0.8}
+
+      - v1_idx: 3
+        v2_idx: 5
+        bidirectional: true
+        edge_rgb: {r: 0.2, g: 0.2, b: 0.8}
+
+      - v1_idx: 3
+        v2_idx: 15
+        bidirectional: true
+        edge_rgb: {r: 0.2, g: 0.2, b: 0.8}
+
+      # 상품 구역 접근
+      - v1_idx: 4
+        v2_idx: 6
+        bidirectional: true
+        edge_rgb: {r: 0.8, g: 0.4, b: 0.0}
+
+      - v1_idx: 3
+        v2_idx: 7
+        bidirectional: true
+        edge_rgb: {r: 0.8, g: 0.4, b: 0.0}
+
+      - v1_idx: 15
+        v2_idx: 8
+        bidirectional: true
+        edge_rgb: {r: 0.8, g: 0.4, b: 0.0}
+
+      - v1_idx: 5
+        v2_idx: 9
+        bidirectional: true
+        edge_rgb: {r: 0.8, g: 0.4, b: 0.0}
+
+      - v1_idx: 4
+        v2_idx: 10
+        bidirectional: true
+        edge_rgb: {r: 0.8, g: 0.4, b: 0.0}
+
+      - v1_idx: 15
+        v2_idx: 11
+        bidirectional: true
+        edge_rgb: {r: 0.8, g: 0.4, b: 0.0}
+
+      - v1_idx: 15
+        v2_idx: 12
+        bidirectional: true
+        edge_rgb: {r: 0.8, g: 0.4, b: 0.0}
+
+      - v1_idx: 5
+        v2_idx: 13
+        bidirectional: true
+        edge_rgb: {r: 0.8, g: 0.4, b: 0.0}
+
+      # 계산대
+      - v1_idx: 3
+        v2_idx: 14
+        bidirectional: true
+        edge_rgb: {r: 0.8, g: 0.0, b: 0.8}
+
+lifts: []

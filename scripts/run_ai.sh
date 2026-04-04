@@ -1,4 +1,4 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env bash
 # ai_server — Docker Compose (YOLO TCP:5005 + LLM REST:8000)
 
 set -e

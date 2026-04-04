@@ -1,21 +1,15 @@
-#!/usr/bin/env zsh
-# admin_app — PyQt6 관제 대시보드 (control_service 포함, 동일 프로세스)
+#!/usr/bin/env bash
+# admin_ui — PyQt6 관제 대시보드
+#
+# 지원 환경: macOS+conda / Ubuntu+apt / Ubuntu+conda
 
 set -e
-ROS_WS="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# ROS2 환경 소싱
-if [ -f "$ROS_WS/install/setup.bash" ]; then
-    source "$ROS_WS/install/setup.bash"
-elif [ -f /opt/ros/jazzy/setup.bash ]; then
-    source /opt/ros/jazzy/setup.bash
-else
-    echo "[admin_app] ⚠️  ROS2 환경을 찾을 수 없습니다. 수동으로 source 후 실행하세요."
-    exit 1
-fi
+source "$SCRIPTS_DIR/_ros_env.sh"
 
 export ROS_DOMAIN_ID=14
 
-echo "[admin_app] 관제 앱 기동 중..."
-cd "$ROS_WS"
-ros2 run admin_app admin_app
+echo "[admin_ui] 관제 앱 기동 중..."
+cd "$(dirname "$SCRIPTS_DIR")"
+ros2 run admin_ui admin_ui

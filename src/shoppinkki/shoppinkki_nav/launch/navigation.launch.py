@@ -1,107 +1,79 @@
-"""Navigation launch — map_server + AMCL + Nav2 bringup + Keepout Filter."""
+"""Navigation launch file for ShopPinkki.
+
+Starts:
+    - map_server (with pre-built shop.yaml map)
+    - nav2 full stack (AMCL + planners + controller + BT navigator)
+    - lifecycle_manager_navigation (autostart=true)
+    - lifecycle_manager_filter  (autostart=false — activated by BT5)
+    - boundary_monitor node
+
+Usage:
+    ros2 launch shoppinkki_nav navigation.launch.py
+    ros2 launch shoppinkki_nav navigation.launch.py map:=/path/to/map.yaml
+"""
 
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
-    pkg_nav = get_package_share_directory('shoppinkki_nav')
-    map_yaml = os.path.join(pkg_nav, 'maps', 'shop.yaml')
-    params_file = os.path.join(pkg_nav, 'config', 'nav2_params.yaml')
-    keepout_mask_yaml = os.path.join(pkg_nav, 'config', 'keepout_mask.yaml')
+    pkg_share = get_package_share_directory('shoppinkki_nav')
+    nav2_bringup_dir = get_package_share_directory('nav2_bringup')
 
+    # ── Launch arguments ──────────────────────
     map_arg = DeclareLaunchArgument(
         'map',
-        default_value=map_yaml,
-        description='Path to map YAML file',
+        default_value=os.path.join(pkg_share, 'maps', 'shop.yaml'),
+        description='Path to map yaml file',
+    )
+    params_arg = DeclareLaunchArgument(
+        'params_file',
+        default_value=os.path.join(pkg_share, 'config', 'nav2_params.yaml'),
+        description='Path to Nav2 params yaml',
+    )
+    use_sim_time_arg = DeclareLaunchArgument(
+        'use_sim_time',
+        default_value='false',
+        description='Use simulation clock',
     )
 
-    # ── 주행 맵 서버 ─────────────────────────────────────────────────────────
-    map_server = Node(
-        package='nav2_map_server',
-        executable='map_server',
-        name='map_server',
-        output='screen',
-        parameters=[{'yaml_filename': LaunchConfiguration('map')}],
+    # ── Nav2 bringup ──────────────────────────
+    nav2_bringup = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(nav2_bringup_dir, 'launch', 'bringup_launch.py')
+        ),
+        launch_arguments={
+            'map': LaunchConfiguration('map'),
+            'params_file': LaunchConfiguration('params_file'),
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+        }.items(),
     )
 
-    amcl = Node(
-        package='nav2_amcl',
-        executable='amcl',
-        name='amcl',
-        output='screen',
-        parameters=[params_file],
-    )
-
-    # ── Keepout Filter 노드 (RETURNING 전용) ─────────────────────────────────
-    # BTReturning이 lifecycle_manager_filter 를 통해 활성화/비활성화합니다.
-    # autostart=false → 평상시 비활성. RETURNING 진입 시 BTReturning이 STARTUP.
-
-    filter_mask_server = Node(
-        package='nav2_map_server',
-        executable='map_server',
-        name='filter_mask_server',
-        output='screen',
-        parameters=[{
-            'yaml_filename': keepout_mask_yaml,
-            'topic_name': 'keepout_filter_mask',
-            'frame_id': 'map',
-        }],
-    )
-
-    costmap_filter_info_server = Node(
-        package='nav2_map_server',
-        executable='costmap_filter_info_server',
-        name='costmap_filter_info_server',
+    # ── BoundaryMonitor node ──────────────────
+    boundary_monitor_node = Node(
+        package='shoppinkki_nav',
+        executable='boundary_monitor',
+        name='boundary_monitor',
         output='screen',
         parameters=[{
-            'type': 0,                            # 0 = KeepoutFilter
-            'filter_info_topic': '/costmap_filter_info',
-            'mask_topic': '/keepout_filter_mask',
-            'base': 0.0,
-            'multiplier': 1.0,
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
         }],
-    )
-
-    # 메인 Nav2 lifecycle 관리자 (map_server, amcl 포함)
-    lifecycle_manager_nav = Node(
-        package='nav2_lifecycle_manager',
-        executable='lifecycle_manager',
-        name='lifecycle_manager_navigation',
-        output='screen',
-        parameters=[{
-            'autostart': True,
-            'node_names': ['map_server', 'amcl'],
-        }],
-    )
-
-    # Keepout Filter 전용 lifecycle 관리자
-    # autostart=false: 기본 비활성 상태 유지.
-    # BTReturning이 /lifecycle_manager_filter/manage_nodes 서비스로
-    # STARTUP(활성화) / PAUSE(비활성화) 명령을 전송합니다.
-    lifecycle_manager_filter = Node(
-        package='nav2_lifecycle_manager',
-        executable='lifecycle_manager',
-        name='lifecycle_manager_filter',
-        output='screen',
-        parameters=[{
-            'autostart': False,
-            'node_names': ['filter_mask_server', 'costmap_filter_info_server'],
-            'bond_timeout': 0.0,
-        }],
+        env={
+            'CONTROL_SERVICE_HOST': os.environ.get('CONTROL_SERVICE_HOST', '127.0.0.1'),
+            'CONTROL_SERVICE_PORT': os.environ.get('CONTROL_SERVICE_PORT', '8081'),
+        },
     )
 
     return LaunchDescription([
         map_arg,
-        map_server,
-        amcl,
-        filter_mask_server,
-        costmap_filter_info_server,
-        lifecycle_manager_nav,
-        lifecycle_manager_filter,
+        params_arg,
+        use_sim_time_arg,
+        nav2_bringup,
+        boundary_monitor_node,
     ])

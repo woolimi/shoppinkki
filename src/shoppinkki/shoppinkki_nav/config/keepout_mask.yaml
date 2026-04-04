@@ -1,23 +1,42 @@
-# Keepout Filter Mask — ShopPinkki 복귀 전용 통행 제한 구역
+# Keepout Filter configuration for BT5 (RETURNING / LOCKED auto-return)
 #
-# 이 맵은 로봇이 RETURNING 상태일 때 global_costmap에 적용됩니다.
-# nav2_lifecycle_manager_filter (autostart=false)를 통해
-# BTReturning 시작 시 활성화, 완료/실패 시 비활성화됩니다.
+# The keepout mask marks zones the robot must avoid when returning to charging.
+# Activated via lifecycle_manager_filter STARTUP in bt_returning.py.
+# Deactivated (PAUSE) when BT5 completes or fails.
 #
-# 마스크 규칙:
-#   픽셀값 0   → 통행 가능 (no cost)
-#   픽셀값 255 → 통행 불가 (lethal cost, keepout zone)
+# Layer: costmap_filter (nav2_costmap_2d::CostmapFilterInfoServer)
+# Mask file: keepout_mask.pgm (generated from shop.pgm — mark product aisles)
 #
-# 편집 방법:
-#   1. shop.pgm을 GIMP 또는 스크립트로 복사
-#   2. 지나가지 말아야 할 구역(상품 진열대 통로 등)을 흰색(255)으로 칠함
-#   3. 나머지(메인 복귀 통로)는 검정(0)으로 유지
-#
-# TODO: shop.yaml의 resolution/origin 값을 실측 후 아래 값 확정
+# Coordinate frame: map
+# Resolution must match shop.yaml (0.01 m/px for 1.8x1.4m shop)
 
-image: keepout_mask.pgm
-resolution: 0.05           # shop.yaml 과 동일해야 함
-origin: [0.0, 0.0, 0.0]   # shop.yaml 과 동일해야 함
-negate: 0
-occupied_thresh: 0.65
-free_thresh: 0.196
+costmap_filter_info_server:
+  ros__parameters:
+    use_sim_time: false
+    type: 0  # 0 = KEEPOUT_FILTER
+    filter_info_topic: /costmap_filter_info
+    mask_topic: /keepout_filter_mask
+    base: 0.0
+    multiplier: 1.0
+
+keepout_filter_mask_server:
+  ros__parameters:
+    use_sim_time: false
+    yaml_filename: "keepout_mask.yaml"
+    topic_name: "/keepout_filter_mask"
+    frame_id: "map"
+
+# Add keepout filter layer to global costmap when active
+# (injected via lifecycle_manager_filter)
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      plugins:
+        - static_layer
+        - obstacle_layer
+        - keepout_filter
+        - inflation_layer
+      keepout_filter:
+        plugin: "nav2_costmap_2d::KeepoutFilter"
+        enabled: true
+        filter_info_topic: "/costmap_filter_info"

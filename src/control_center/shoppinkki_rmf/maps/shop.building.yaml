@@ -1,0 +1,92 @@
+# ShopPinkki traffic_editor 빌딩 맵
+#
+# ⚠️  이 파일은 traffic_editor GUI로 작성해야 하는 참조 템플릿입니다.
+#     실제 운용 전 traffic_editor로 열어 레인(Lane)과 웨이포인트(Waypoint)를
+#     shop.pgm 이미지 위에 정확히 배치한 후 저장하세요.
+#
+# 생성 방법:
+#   traffic_editor maps/shop.building.yaml
+#
+# 변환 (traffic_editor → RMF nav graph):
+#   ros2 run rmf_building_map_tools building_map_generator nav maps/shop.building.yaml maps/shop_nav_graph.yaml
+#
+# 좌표계: 맵 원점 기준 meter (resolution=0.05m/pixel, origin=[-0.1, -0.1])
+# 맵 크기: 1.8 × 1.4 m (36 × 28 pixels)
+
+building_name: "ShopPinkki Miniature Mart"
+levels:
+  L1:
+    drawing:
+      filename: "shop.pgm"
+    elevation: 0.0
+    flattened_x_offset: 0.0
+    flattened_y_offset: 0.0
+
+    # ── 웨이포인트 (waypoints) ────────────────────────────────────────────
+    # [x(m), y(m), angle(rad), name, [attributes]]
+    # 좌표는 맵 월드 좌표 (amcl_pose와 동일 기준)
+    vertices:
+      - [0.20, 0.20, 1.5708, "P1",  [["is_parking_spot", "bool", true],  ["is_charger", "bool", true]]]
+      - [0.50, 0.20, 1.5708, "P2",  [["is_parking_spot", "bool", true],  ["is_charger", "bool", true]]]
+      - [0.90, 0.20, 1.5708, "Entrance",  []]
+      - [0.90, 0.70, 0.0,    "Corridor_C", []]
+      - [0.30, 0.70, 0.0,    "Corridor_W", []]
+      - [1.50, 0.70, 0.0,    "Corridor_E", []]
+      - [0.30, 1.10, 0.0,    "Zone1",      [["pickup_zone", "bool", true]]]
+      - [0.70, 1.10, 0.0,    "Zone2",      [["pickup_zone", "bool", true]]]
+      - [1.10, 1.10, 0.0,    "Zone3",      [["pickup_zone", "bool", true]]]
+      - [1.50, 1.10, 0.0,    "Zone4",      [["pickup_zone", "bool", true]]]
+      - [0.30, 0.40, 0.0,    "Zone5",      [["pickup_zone", "bool", true]]]
+      - [0.70, 0.40, 0.0,    "Zone6",      [["pickup_zone", "bool", true]]]
+      - [1.10, 0.40, 0.0,    "Zone7",      [["pickup_zone", "bool", true]]]
+      - [1.50, 0.40, 0.0,    "Zone8",      [["pickup_zone", "bool", true]]]
+      - [0.90, 1.10, 0.0,    "Checkout",   [["is_holding_point", "bool", true]]]
+      - [0.90, 0.40, 0.0,    "Hub",        []]
+
+    # ── 레인 (lanes) ──────────────────────────────────────────────────────
+    # [from_vertex_idx, to_vertex_idx, [attributes]]
+    # 양방향은 두 방향 모두 명시
+    lanes:
+      # 충전소 ↔ 입구
+      - [0, 2, [["bidirectional", "bool", false]]]  # P1 → Entrance
+      - [2, 0, [["bidirectional", "bool", false]]]  # Entrance → P1
+      - [1, 2, [["bidirectional", "bool", false]]]  # P2 → Entrance
+      - [2, 1, [["bidirectional", "bool", false]]]  # Entrance → P2
+
+      # 메인 복도
+      - [2, 3, []]   # Entrance ↔ Corridor_C
+      - [3, 2, []]
+      - [3, 4, []]   # Corridor_C ↔ Corridor_W
+      - [4, 3, []]
+      - [3, 5, []]   # Corridor_C ↔ Corridor_E
+      - [5, 3, []]
+
+      # Hub (중앙)
+      - [3, 15, []]
+      - [15, 3, []]
+
+      # 상품 구역 접근 (북쪽 열)
+      - [4, 6,  []]   # Corridor_W → Zone1
+      - [6, 4,  []]
+      - [3, 7,  []]   # Corridor_C → Zone2 (via hub)
+      - [7, 3,  []]
+      - [15, 8, []]
+      - [8, 15, []]
+      - [5, 9,  []]   # Corridor_E → Zone4
+      - [9, 5,  []]
+
+      # 상품 구역 접근 (남쪽 열)
+      - [4, 10, []]
+      - [10, 4, []]
+      - [15, 11, []]
+      - [11, 15, []]
+      - [15, 12, []]
+      - [12, 15, []]
+      - [5, 13, []]
+      - [13, 5, []]
+
+      # 계산대
+      - [3, 14, []]
+      - [14, 3, []]
+
+lifts: []

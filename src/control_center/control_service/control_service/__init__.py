@@ -1,0 +1,1 @@
+"""ShopPinkki control service package."""

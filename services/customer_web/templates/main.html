@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#4f46e5">
+  <title>ShopPinkki</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script>
+    /* shop.yaml 파라미터 (서버에서 필요 시 Jinja로 주입 가능) */
+    window.MAP_RESOLUTION = {{ map_resolution | default(0.05) }};
+    window.MAP_ORIGIN_X   = {{ map_origin_x   | default(-0.1) }};
+    window.MAP_ORIGIN_Y   = {{ map_origin_y   | default(-0.1) }};
+    window.MAP_IMAGE_URL  = "/static/map/shop.png";
+  </script>
+</head>
+<body>
+<div class="app-container">
+
+  <!-- ─────────────────────────────────────────────────────────────
+       3-A. 공통 상단 바
+  ───────────────────────────────────────────────────────────── -->
+  <header class="top-bar">
+    <span class="robot-label">🤖 #{{ robot_id }}</span>
+    <span id="mode-badge" class="badge badge-IDLE">등록 대기</span>
+    <span id="battery-level" class="battery">🔋--%</span>
+    <span id="ctrl-status" style="font-size:12px; color:var(--warning);"></span>
+    <button class="btn-map" onclick="openMapOverlay()" aria-label="맵 보기">🗺️</button>
+  </header>
+
+  <!-- ─────────────────────────────────────────────────────────────
+       3-B. 인형 등록 패널 (mode=IDLE)
+  ───────────────────────────────────────────────────────────── -->
+  <div id="panel-idle" class="panel active">
+    <div class="card">
+      <div class="spinner-wrap">
+        <span style="font-size: 40px;">📷</span>
+        <p style="font-weight: 600; font-size: 16px;">인형을 카메라에 보여주세요</p>
+        <div class="spinner"></div>
+        <p style="font-size: 13px; color: var(--text-muted);">감지 중...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────────────
+       3-C. 메인 쇼핑 패널 (mode=TRACKING / TRACKING_CHECKOUT / WAITING)
+  ───────────────────────────────────────────────────────────── -->
+  <div id="panel-shopping" class="panel">
+    <!-- 액션 버튼 -->
+    <div class="card" style="padding-bottom: 12px;">
+      <div class="btn-group">
+        <button class="btn btn-outline" onclick="openFindPanel()">🔍 상품 찾기</button>
+        <button class="btn btn-outline" onclick="openQrPanel()">📦 담기</button>
+      </div>
+    </div>
+
+    <!-- 장바구니 -->
+    <div class="card">
+      <div class="card-title">🛒 장바구니</div>
+      <ul id="cart-list" class="cart-list">
+        <li class="cart-empty">장바구니가 비어있습니다.</li>
+      </ul>
+      <div class="cart-total">
+        <span>합계</span>
+        <span id="cart-total-amount">0원</span>
+      </div>
+    </div>
+
+    <!-- 하단 조작 버튼 -->
+    <div class="card" style="padding-top: 12px;">
+      <div class="btn-group">
+        <button id="btn-wait"
+          class="btn btn-outline"
+          onclick="socket.emit('mode', {value: 'WAITING'})"
+        >⏸ 대기하기</button>
+        <button id="btn-follow"
+          class="btn btn-outline"
+          style="display:none;"
+          onclick="socket.emit('resume_tracking', {})"
+        >▶ 따라가기</button>
+        <button class="btn btn-danger" onclick="requestReturn()">🚪 쇼핑 종료</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────────────
+       3-G. LOCKED 알림 패널
+  ───────────────────────────────────────────────────────────── -->
+  <div id="panel-locked" class="panel">
+    <div class="card alert-panel">
+      <span class="alert-icon">🔒</span>
+      <h2>카트 잠금</h2>
+      <p>
+        미결제 물건이 있어 카트가 잠겼습니다.<br><br>
+        카트가 충전소로 이동 중입니다.<br>
+        직원이 처리할 예정입니다.<br><br>
+        <strong>잠시 기다려 주세요...</strong>
+      </p>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────────────
+       3-I. HALTED 알림 패널
+  ───────────────────────────────────────────────────────────── -->
+  <div id="panel-halted" class="panel">
+    <div class="card alert-panel">
+      <span class="alert-icon">🔋</span>
+      <h2>배터리 부족</h2>
+      <p>
+        카트의 배터리가 부족하여<br>
+        현재 위치에서 정지했습니다.<br><br>
+        직원을 호출했습니다.<br>
+        <strong>잠시 기다려 주세요.</strong>
+      </p>
+    </div>
+  </div>
+
+</div><!-- /.app-container -->
+
+<!-- ─────────────────────────────────────────────────────────────
+     3-D. 상품 검색 오버레이
+───────────────────────────────────────────────────────────── -->
+<div id="find-overlay" class="overlay hidden" role="dialog" aria-modal="true" aria-label="상품 검색">
+  <div class="overlay-box">
+    <div class="overlay-title">🔍 상품 검색</div>
+    <div class="search-row">
+      <input
+        id="find-input"
+        class="form-control"
+        type="text"
+        placeholder="찾으시는 상품을 입력하세요"
+        onkeydown="if(event.key==='Enter') submitFind()"
+      >
+      <button id="btn-mic" class="btn-mic" onclick="toggleMic()" aria-label="음성 검색">🎤</button>
+    </div>
+    <div id="find-result" class="search-result"></div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="submitFind()">검색</button>
+      <button class="btn btn-outline" onclick="closeFindPanel()">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────
+     3-E. QR 스캔 패널 오버레이
+───────────────────────────────────────────────────────────── -->
+<div id="qr-overlay" class="overlay hidden" role="dialog" aria-modal="true" aria-label="QR 스캔">
+  <div class="overlay-box">
+    <div class="overlay-title">📷 상품 담기</div>
+    <div class="qr-instruction">상품 QR 코드를 스캔하세요</div>
+    <div class="qr-timeout-bar">
+      <div id="qr-progress" class="qr-timeout-progress" style="width:100%;"></div>
+    </div>
+    <ul id="qr-cart-list" class="cart-list">
+      <li class="cart-empty">스캔한 상품이 없습니다.</li>
+    </ul>
+    <p style="font-size:12px; color:var(--text-muted); text-align:center; margin-bottom:12px;">
+      30초 무활동 시 자동 종료됩니다
+    </p>
+    <button class="btn btn-primary btn-full" onclick="closeQrPanel()">담기 완료</button>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────
+     3-F. 결제 팝업 (모달)
+───────────────────────────────────────────────────────────── -->
+<div id="checkout-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-label="결제">
+  <div class="modal-box">
+    <div class="modal-title">💳 결제 구역 진입</div>
+    <p style="font-size:14px; color:var(--text-muted); margin-bottom:14px;">
+      카트에 담긴 상품을 결제하시겠습니까?
+    </p>
+    <ul id="payment-cart-list" class="cart-list" style="max-height:220px; overflow-y:auto; margin-bottom:10px;">
+      <li class="cart-empty">장바구니가 비어있습니다.</li>
+    </ul>
+    <div class="cart-total" style="margin-bottom:16px;">
+      <span>합계</span>
+      <span id="payment-total-amount">0원</span>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      <button class="btn btn-primary btn-full"
+        onclick="socket.emit('payment', {}); closeCheckoutModal();">
+        결제하기
+      </button>
+      <button class="btn btn-outline btn-full" onclick="closeCheckoutModal()">
+        계속 쇼핑하기
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────
+     3-H. 도착 팝업 (모달)
+───────────────────────────────────────────────────────────── -->
+<div id="arrived-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-label="도착">
+  <div class="modal-box center arrived-modal">
+    <span class="check-icon">📍</span>
+    <div id="arrived-zone-name" class="zone-name">목적지</div>
+    <p>에 도착했습니다!</p>
+    <button class="btn btn-primary btn-full" onclick="closeArrivedModal()">
+      확인
+    </button>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────
+     3-J. 맵 오버레이 (전체화면 모달)
+───────────────────────────────────────────────────────────── -->
+<div id="map-overlay" class="map-overlay hidden" role="dialog" aria-modal="true" aria-label="마트 지도">
+  <div class="map-header">
+    <h2>🗺️ 마트 지도</h2>
+    <button class="btn-close-map" onclick="closeMapOverlay()" aria-label="닫기">✕</button>
+  </div>
+  <div class="map-canvas-wrap">
+    <canvas id="mapCanvas"></canvas>
+  </div>
+  <div class="map-legend">
+    <span><span class="legend-dot my-robot"></span> 내 로봇 #{{ robot_id }}</span>
+    <span><span class="legend-dot other-robot"></span> 다른 로봇</span>
+  </div>
+</div>
+
+<!-- ── 토스트 컨테이너 ── -->
+<div id="toast-container" aria-live="polite"></div>
+
+<!-- ── 스크립트 ─────────────────────────────────────────────── -->
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"
+        crossorigin="anonymous"></script>
+<script src="/static/js/cart.js"></script>
+<script src="/static/js/map.js"></script>
+<script src="/static/js/socket.js"></script>
+<script>
+  // 맵 초기화
+  MapRenderer.init("mapCanvas", "{{ robot_id }}");
+</script>
+</body>
+</html>

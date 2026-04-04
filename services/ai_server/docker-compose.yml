@@ -1,0 +1,56 @@
+version: '3.9'
+
+# ShopPinkki AI Server
+#
+# 서비스:
+#   yolo — TCP:5005 YOLOv8 인형 감지 추론 서버 (채널 F)
+#   llm  — REST:8000 자연어 상품 위치 검색 서버 (채널 D)
+#
+# 실행:
+#   cd services/ai_server
+#   docker compose up
+#
+# 환경 변수 (.env 파일 또는 shell export):
+#   MYSQL_HOST     (llm 서버용, 기본 host.docker.internal)
+#   MYSQL_PORT     (기본 3306)
+#   MYSQL_USER     (기본 shoppinkki)
+#   MYSQL_PASSWORD (기본 shoppinkki)
+#   MYSQL_DATABASE (기본 shoppinkki)
+
+services:
+  yolo:
+    build:
+      context: ./yolo
+      dockerfile: Dockerfile
+    container_name: shoppinkki_yolo
+    ports:
+      - "5005:5005"
+    volumes:
+      - ./yolo/models:/app/models:ro
+    environment:
+      - MODEL_PATH=/app/models/doll_yolov8n.pt
+      - FALLBACK_MODEL=yolov8n.pt
+      - YOLO_CONFIDENCE=0.40
+      - YOLO_CLASS_FILTER=           # 빈 문자열 → 전체 클래스 허용 (custom model은 1클래스)
+      - HOST=0.0.0.0
+      - PORT=5005
+    restart: unless-stopped
+
+  llm:
+    build:
+      context: ./llm
+      dockerfile: Dockerfile
+    container_name: shoppinkki_llm
+    ports:
+      - "8000:8000"
+    environment:
+      - MYSQL_HOST=${MYSQL_HOST:-host.docker.internal}
+      - MYSQL_PORT=${MYSQL_PORT:-3306}
+      - MYSQL_USER=${MYSQL_USER:-shoppinkki}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-shoppinkki}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-shoppinkki}
+      - HOST=0.0.0.0
+      - PORT=8000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # Linux에서 호스트 접근
+    restart: unless-stopped

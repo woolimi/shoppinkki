@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#4f46e5">
+  <title>ShopPinkki — 로그인</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    body { display: flex; align-items: flex-start; justify-content: center; min-height: 100vh; background: var(--bg); }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <div class="login-brand">
+      <span class="brand-icon">🛒</span>
+      <h1>ShopPinkki</h1>
+      <p>스마트 카트 서비스 &nbsp;·&nbsp; #{{ robot_id }}</p>
+    </div>
+
+    {% if error %}
+    <div class="error-msg" role="alert">⚠ {{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="/login" autocomplete="off" novalidate>
+      <input type="hidden" name="robot_id" value="{{ robot_id }}">
+
+      <div class="form-group">
+        <label for="user_id">아이디</label>
+        <input
+          class="form-control"
+          type="text"
+          id="user_id"
+          name="user_id"
+          placeholder="아이디를 입력하세요"
+          autocapitalize="none"
+          autocorrect="off"
+          required
+        >
+      </div>
+
+      <div class="form-group">
+        <label for="password">비밀번호</label>
+        <input
+          class="form-control"
+          type="password"
+          id="password"
+          name="password"
+          placeholder="비밀번호를 입력하세요"
+          required
+        >
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-full" style="margin-top: 8px;">
+        로그인
+      </button>
+    </form>
+  </div>
+</body>
+</html>
