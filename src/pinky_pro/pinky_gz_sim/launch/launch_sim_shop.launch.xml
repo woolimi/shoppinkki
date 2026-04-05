@@ -8,14 +8,8 @@
     <arg name="world" default="$(find-pkg-share pinky_gz_sim)/worlds/$(var world_name)"/>
     <arg name="bridge_params" default="$(find-pkg-share pinky_gz_sim)/params/pinky_bridge.yaml"/>
     <!-- Gazebo에서 핑키 스폰 위치·자세 (create 노드: -R -P -Y 는 라디안) -->
-    <!-- <arg name="spawn_x" default="0.6"/>
-    <arg name="spawn_y" default="0.10"/>
-    <arg name="spawn_z" default="0.0"/>
-    <arg name="spawn_roll" default="0.0"/>
-    <arg name="spawn_pitch" default="0.0"/>
-    <arg name="spawn_yaw" default="3.141592"/> -->
-    <arg name="spawn_x" default="0.20"/>
-    <arg name="spawn_y" default="0.20"/>
+    <arg name="spawn_x" default="0.699"/>
+    <arg name="spawn_y" default="0.150"/>
     <arg name="spawn_z" default="0.0"/>
     <arg name="spawn_roll" default="0.0"/>
     <arg name="spawn_pitch" default="0.0"/>

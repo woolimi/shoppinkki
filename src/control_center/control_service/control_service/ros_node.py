@@ -135,8 +135,8 @@ class ControlServiceNode:
     def _on_status(self, robot_id: str, raw: str) -> None:
         try:
             payload = json.loads(raw)
-            logger.info('← status robot=%s mode=%s pos=(%.2f,%.2f)',
-                        robot_id, payload.get('mode'), payload.get('pos_x', 0), payload.get('pos_y', 0))
+            logger.debug('← status robot=%s mode=%s pos=(%.2f,%.2f)',
+                         robot_id, payload.get('mode'), payload.get('pos_x', 0), payload.get('pos_y', 0))
             self._rm.on_status(robot_id, payload)
         except Exception as e:
             logger.error('on_status error: %s', e)

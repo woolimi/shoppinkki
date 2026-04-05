@@ -2,8 +2,8 @@
 
 구성:
     - Gazebo world (server + GUI): shop.world 1회 실행
-    - 로봇 54: 스폰(0.20, 0.20) + 브리지 + Nav2(namespace=robot_54)
-    - 로봇 18: 스폰(0.50, 0.20) + 브리지 + Nav2(namespace=robot_18)
+    - 로봇 54: 스폰(0.939, 0.120, yaw=90°) + 브리지 + Nav2(namespace=robot_54)
+    - 로봇 18: 스폰(0.699, 0.120, yaw=90°) + 브리지 + Nav2(namespace=robot_18)
 
 사용법:
     ros2 launch shoppinkki_nav gz_multi_robot.launch.py
@@ -42,15 +42,21 @@ ROBOTS = [
         'id': '54',
         'ns': 'robot_54',
         'model': 'pinky_54',
-        'x': '0.939', 'y': '0.100', 'z': '0.0',
+        # Gazebo 스폰 좌표 (Gazebo world frame)
+        'x': '0.939', 'y': '0.120', 'z': '0.0',
         'yaw': '1.570796',
+        # 맵 프레임 좌표 (static TF + AMCL 초기 pose용)
+        'map_x': '0.020', 'map_y': '-0.282', 'map_yaw': '0.0',
     },
     {
         'id': '18',
         'ns': 'robot_18',
         'model': 'pinky_18',
-        'x': '0.699', 'y': '0.100', 'z': '0.0',
+        # Gazebo 스폰 좌표 (Gazebo world frame)
+        'x': '0.699', 'y': '0.120', 'z': '0.0',
         'yaw': '1.570796',
+        # 맵 프레임 좌표 (static TF + AMCL 초기 pose용)
+        'map_x': '0.023', 'map_y': '-0.042', 'map_yaw': '0.0',
     },
 ]
 
@@ -102,16 +108,17 @@ def make_robot_actions(robot: dict, delay: float) -> list:
     )
 
     # 3.5) map → <ns>/odom 초기 static TF (AMCL 부트스트랩용)
+    #      Gazebo world frame ≠ map frame 이므로 맵 좌표(map_x/y/yaw) 사용
     #      AMCL이 초기화되면 동적 TF로 자동 대체됨
     map_to_odom = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
         name=f'map_odom_{ns}',
         arguments=[
-            '--x', robot['x'],
-            '--y', robot['y'],
+            '--x', robot['map_x'],
+            '--y', robot['map_y'],
             '--z', '0',
-            '--yaw', robot['yaw'],
+            '--yaw', robot['map_yaw'],
             '--pitch', '0',
             '--roll', '0',
             '--frame-id', 'map',

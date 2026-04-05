@@ -32,12 +32,13 @@ def test_mode_colors():
     assert expected_modes.issubset(set(MODE_COLORS.keys()))
 
 
-def test_map_constants():
-    """맵 좌표 변환 상수 확인."""
-    from admin_ui.map_widget import MAP_RESOLUTION, MAP_ORIGIN_X, MAP_ORIGIN_Y
-    assert MAP_RESOLUTION == 0.01
-    assert MAP_ORIGIN_X == -0.1
-    assert MAP_ORIGIN_Y == -0.1
+def test_map_yaml_load():
+    """맵 YAML 로드 및 메타데이터 확인."""
+    from admin_ui.map_widget import _load_map_meta
+    meta = _load_map_meta()
+    assert meta['resolution'] > 0
+    assert isinstance(meta['origin_x'], float)
+    assert isinstance(meta['origin_y'], float)
 
 
 def test_event_log_max_rows():
