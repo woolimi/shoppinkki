@@ -1,6 +1,0 @@
-[submodule "src/pinky_for_edu"]
-	path = src/pinky_for_edu
-	url = git@github.com:woolimi/pinky_for_edu.git
-[submodule "src/pinky_pro"]
-	path = src/pinky_pro
-	url = git@github.com:woolimi/pinky_pro.git
