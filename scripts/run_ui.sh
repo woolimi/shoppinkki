@@ -34,9 +34,10 @@ tmux set-option -g mouse on 2>/dev/null || true
 # ── 창 생성 ────────────────────────────────────────────────────────────────────
 
 # 창 0: admin_ui (PyQt6 — GUI 앱)
+# ros2 run 은 shebang 으로 시스템 python 을 쓰므로 conda 의 PyQt6 가 안 잡힘 → env python3
 tmux new-session -d -s "$SESSION" -n "admin"
 tmux send-keys -t "${SESSION}:admin" \
-    "$TMUX_SRC && $ROS_ENV && cd $ROS_WS && ros2 run admin_ui admin_ui" Enter
+    "$TMUX_SRC && $ROS_ENV && cd $ROS_WS && env python3 $ROS_WS/install/admin_ui/lib/admin_ui/admin_ui" Enter
 
 # 창 1: customer_web (Flask + SocketIO, 포트 8501)
 tmux new-window -t "${SESSION}" -n "customer"

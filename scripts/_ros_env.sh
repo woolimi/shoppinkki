@@ -13,7 +13,14 @@
 #   TMUX_SRC   — tmux send-keys 용 원라인 (항상 zsh 호환 파일 사용)
 #   CONDA_BIN  — conda env bin 경로 (없으면 "")
 
-_SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
+# $0 은 source 시 상위 스크립트 이름일 수 있음(bash); bash -c 'source …' 는 $0=bash 가 되기도 함
+_ROS_ENV_SELF="$0"
+if [ -n "${BASH_VERSION:-}" ]; then
+    # dash 등에서는 BASH_SOURCE 를 건드리지 않음
+    # shellcheck disable=SC3054
+    [ -n "${BASH_SOURCE[0]:-}" ] && _ROS_ENV_SELF="${BASH_SOURCE[0]}"
+fi
+_SCRIPTS_DIR="$(cd "$(dirname "$_ROS_ENV_SELF")" && pwd)"
 _ROS_WS="$(dirname "$_SCRIPTS_DIR")"
 
 # ── 1. conda env 탐색 ─────────────────────────────────────────────────────────
