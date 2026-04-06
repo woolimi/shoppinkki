@@ -57,6 +57,7 @@ from .camera_panel import CameraDebugPanel
 from .event_log_panel import EventLogPanel
 from .map_widget import MapWidget
 from .robot_card import RobotCard
+from .robot_detail_dialog import RobotDetailDialog
 from .staff_panel import StaffCallPanel
 from .tcp_client import TCPClientThread
 
@@ -89,6 +90,9 @@ class MainWindow(QMainWindow):
         self._robot_states: dict[str, dict] = {}
         # 맵 클릭으로 저장된 goto 좌표 (모든 로봇 공용 대기)
         self._pending_goto: tuple[float, float] | None = None
+        # 로봇 상세 다이얼로그 (robot_id → dialog)
+        self._detail_dialogs: dict[str, RobotDetailDialog] = {}
+        self._rest_base = f'http://{rest_host}:{rest_port}'
 
         self.setWindowTitle('ShopPinkki — 관제 패널')
         self.resize(1400, 900)
@@ -171,6 +175,7 @@ class MainWindow(QMainWindow):
         for rid in self._robot_ids:
             card = RobotCard(rid)
             card.command_requested.connect(self._on_command_requested)
+            card.card_clicked.connect(self._on_card_clicked)
             card_layout.addWidget(card)
             self._robot_cards[rid] = card
         card_layout.addStretch()
@@ -262,6 +267,11 @@ class MainWindow(QMainWindow):
         if bbox:
             self._camera_panel.update_bbox(robot_id, bbox)
 
+        # 상세 다이얼로그 상태 갱신
+        dlg = self._detail_dialogs.get(robot_id)
+        if dlg and dlg.isVisible():
+            dlg.update_state(data)
+
     def _handle_staff_call(self, data: dict):
         robot_id = str(data.get('robot_id', ''))
         event_type = data.get('event', '')
@@ -304,6 +314,21 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             f'맵 클릭: 월드 좌표 ({x:.3f}, {y:.3f}) — IDLE 로봇 카드에서 [이동 명령] 클릭'
         )
+
+    # ------------------------------------------------------------------
+    # 로봇 카드 클릭 → 상세 다이얼로그
+    # ------------------------------------------------------------------
+
+    def _on_card_clicked(self, robot_id: str):
+        dlg = self._detail_dialogs.get(robot_id)
+        if dlg and dlg.isVisible():
+            dlg.activateWindow()
+            return
+        dlg = RobotDetailDialog(robot_id, self._rest_base, parent=self)
+        if robot_id in self._robot_states:
+            dlg.update_state(self._robot_states[robot_id])
+        self._detail_dialogs[robot_id] = dlg
+        dlg.show()
 
     # ------------------------------------------------------------------
     # 명령 전송
