@@ -159,7 +159,7 @@ for i, v in enumerate(vertices):
     params = v[2] if len(v) > 2 else {}
     name   = params.get('name', str(i))
     ax_leg.text(0.05, y, f'{i:2d}  {name}', transform=ax_leg.transAxes,
-                fontsize=8.5, color='#cccccc', family='monospace')
+                fontsize=8.5, color='#cccccc')
     y -= 0.037
     if y < 0.01:
         break
