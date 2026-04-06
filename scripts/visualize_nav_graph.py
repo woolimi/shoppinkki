@@ -47,7 +47,7 @@ lane_set     = {(l[0], l[1]) for l in lanes}
 drawn_bidir  = set()
 
 # ── 레이아웃: 맵(왼쪽) + 범례(오른쪽) ─────────────────────────────────────────
-fig = plt.figure(figsize=(28, 24), facecolor='#1a1a2e')
+fig = plt.figure(figsize=(18, 15), facecolor='#1a1a2e')
 ax_map = fig.add_axes([0.02, 0.02, 0.72, 0.94])   # 맵 영역
 ax_leg = fig.add_axes([0.76, 0.10, 0.22, 0.80])   # 범례 영역
 
@@ -112,7 +112,7 @@ for i, v in enumerate(vertices):
     ax_map.plot(vx, vy, marker=s['marker'], color=s['color'], markersize=s['ms'],
                 markeredgecolor=s['ec'], markeredgewidth=s['ew'], zorder=6)
 
-    ax_map.text(vx + 7, vy - 7, f'{i}: {name}', fontsize=13, color='white',
+    ax_map.text(vx + 5, vy - 5, f'{i}: {name}', fontsize=17, color='white',
                 fontweight='bold', zorder=7,
                 bbox=dict(boxstyle='round,pad=0.3', fc='#111827', alpha=0.75, ec='none'))
 
