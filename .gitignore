@@ -6,3 +6,5 @@
 **/__pycache__/
 pyrightconfig.json
 .DS_Store
+log.css
+log/
