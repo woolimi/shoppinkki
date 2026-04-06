@@ -140,6 +140,7 @@ CREATE TABLE IF NOT EXISTS CART_ITEM (
     cart_id      INT          NOT NULL,
     product_name VARCHAR(100) NOT NULL,
     price        INT          NOT NULL DEFAULT 0,
+    quantity     INT          NOT NULL DEFAULT 1,
     scanned_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_paid      TINYINT(1)   NOT NULL DEFAULT 0,
     PRIMARY KEY (item_id),

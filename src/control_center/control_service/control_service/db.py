@@ -177,12 +177,36 @@ def get_cart_by_session(session_id: int) -> Optional[Dict]:
 
 
 def add_cart_item(cart_id: int, product_name: str, price: int) -> int:
+    """Insert a new cart item or increment quantity if the same unpaid item exists."""
     with _cursor() as cur:
+        cur.execute(
+            'SELECT item_id FROM CART_ITEM '
+            'WHERE cart_id = %s AND product_name = %s AND price = %s AND is_paid = 0',
+            (cart_id, product_name, price),
+        )
+        row = cur.fetchone()
+        if row:
+            cur.execute(
+                'UPDATE CART_ITEM SET quantity = quantity + 1 WHERE item_id = %s',
+                (row['item_id'],),
+            )
+            return row['item_id']
         cur.execute(
             'INSERT INTO CART_ITEM (cart_id, product_name, price) VALUES (%s, %s, %s)',
             (cart_id, product_name, price),
         )
         return cur.lastrowid
+
+
+def update_cart_item_quantity(item_id: int, quantity: int) -> None:
+    """Set quantity for an unpaid cart item (minimum 1)."""
+    if quantity < 1:
+        quantity = 1
+    with _cursor() as cur:
+        cur.execute(
+            'UPDATE CART_ITEM SET quantity = %s WHERE item_id = %s AND is_paid = 0',
+            (quantity, item_id),
+        )
 
 
 def delete_cart_item(item_id: int) -> None:

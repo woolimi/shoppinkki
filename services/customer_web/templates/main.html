@@ -174,7 +174,10 @@
 ───────────────────────────────────────────────────────────── -->
 <div id="qr-overlay" class="overlay hidden" role="dialog" aria-modal="true" aria-label="QR 스캔">
   <div class="overlay-box">
-    <div class="overlay-title">📷 상품 담기</div>
+    <div class="overlay-title-row">
+      <span class="overlay-title">📷 상품 담기</span>
+      <button class="btn-overlay-close" onclick="closeQrPanel()" aria-label="닫기">✕</button>
+    </div>
     <div class="qr-instruction">상품 QR 코드를 스캔하세요</div>
     <!-- 시뮬레이션 모드: 웹 카메라 뷰파인더 -->
     <div id="qr-camera-wrap" style="display:none; position:relative; margin-bottom:12px;">
