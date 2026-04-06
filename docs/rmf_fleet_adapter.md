@@ -24,12 +24,19 @@ src/control_center/shoppinkki_rmf/
 ├── config/
 │   └── fleet_config.yaml        ← 플릿 설정 (속도, 배터리, 로봇 목록)
 ├── maps/
-│   ├── shop_nav_graph.yaml      ← RMF 네비게이션 그래프 (24 waypoints)
-│   └── shop.building.yaml       ← building_map_generator 입력 포맷
+│   ├── shop_nav_graph.yaml      ← RMF 네비게이션 그래프 (28 waypoints)
+│   └── shop.building.yaml       ← building_map_generator 입력 포맷 (nav graph와 동기화)
 ├── launch/
 │   └── rmf_fleet.launch.py
 └── shoppinkki_rmf/
     └── fleet_adapter.py         ← 메인 Fleet Adapter 코드
+
+scripts/
+├── visualize_nav_graph.py       ← Nav graph 시각화 스크립트
+└── db/seed_data.sql             ← ZONE 테이블 waypoint 좌표 (nav graph와 동기화)
+
+docs/
+└── nav_graph_viz.png            ← 최신 nav graph 시각화 이미지
 ```
 
 ---
@@ -46,36 +53,66 @@ src/control_center/shoppinkki_rmf/
 | origin | `[-0.183, -1.773]` |
 | 좌표계 | ROS 2 맵 월드 좌표 (`amcl_pose` 기준) |
 
-### 3.2 Waypoint 목록 (24개)
+### 3.2 그리드 정렬 기준
+
+노드 좌표는 아래 기준으로 그리드 정렬되어 있다.
+
+| 라인 | 기준값 | 해당 노드 |
+|---|---|---|
+| 왼쪽 복도 (x) | -0.056 | 0,1,2,3,4,5 |
+| 위쪽 복도 (y) | -0.007 | 0,6,7,8,9 |
+| 내부 1열 (y) | -0.300 | 1,18,19,10 |
+| 내부 2열 (y) | -0.606 | 2,21,20,11 |
+| 내부 3열 (y) | -0.899 | 3,22,12 |
+| 오른쪽 복도 (x) | 1.151 | 9,10,11,12,13,14 |
+
+### 3.3 Waypoint 목록 (28개)
 
 | idx | 이름 | x (m) | y (m) | 속성 |
 |---|---|---|---|---|
-| 0 | 입구1 | -0.009 | -0.031 | — |
-| 1 | 입구2 | -0.003 | -0.332 | — |
-| 2 | P1 | 0.002 | -0.518 | charger, parking |
-| 3 | P2 | 0.002 | -0.789 | charger, parking |
-| 4 | 출구2 | -0.032 | -1.402 | — |
+| 0 | 입구1 | -0.056 | -0.007 | — |
+| 1 | 입구2 | -0.056 | -0.300 | — |
+| 2 | P1 | -0.056 | -0.606 | charger, parking |
+| 3 | P2 | -0.056 | -0.899 | charger, parking |
+| 4 | 출구2 | -0.056 | -1.402 | — |
 | 5 | 출구1 | -0.056 | -1.617 | — |
 | 6 | 가전제품1 | 0.489 | -0.007 | pickup_zone |
-| 7 | 가전제품2 | 0.749 | -0.006 | pickup_zone |
-| 8 | 과자1 | 0.916 | -0.004 | pickup_zone |
-| 9 | 과자_해산물 | 1.142 | -0.003 | — |
-| 10 | 해산물2 | 1.145 | -0.304 | pickup_zone |
-| 11 | 육류1 | 1.156 | -0.608 | pickup_zone |
+| 7 | 가전제품2 | 0.749 | -0.007 | pickup_zone |
+| 8 | 과자1 | 0.950 | -0.007 | pickup_zone |
+| 9 | 과자_해산물 | 1.151 | -0.007 | — |
+| 10 | 해산물2 | 1.151 | -0.300 | pickup_zone |
+| 11 | 육류1 | 1.151 | -0.606 | pickup_zone |
 | 12 | 육류2 | 1.151 | -0.899 | pickup_zone |
-| 13 | 채소1 | 1.154 | -1.224 | pickup_zone |
-| 14 | 채소_화장실 | 1.149 | -1.573 | — |
+| 13 | 채소1 | 1.151 | -1.224 | pickup_zone |
+| 14 | 채소_화장실 | 1.151 | -1.606 | — |
 | 15 | 화장실2 | 0.812 | -1.606 | pickup_zone |
 | 16 | 결제구역1 | 0.186 | -1.614 | holding_point |
-| 17 | 결제구역2 | 0.183 | -1.364 | holding_point |
+| 17 | 결제구역2 | 0.183 | -1.402 | holding_point |
 | 18 | 빵1 | 0.494 | -0.300 | pickup_zone |
-| 19 | 빵2 | 0.776 | -0.275 | pickup_zone |
+| 19 | 빵2 | 0.749 | -0.300 | pickup_zone |
 | 20 | 가공식품1 | 0.774 | -0.606 | pickup_zone |
-| 21 | 가공식품2 | 0.473 | -0.601 | pickup_zone |
-| 22 | 음료1 | 0.704 | -0.928 | pickup_zone |
+| 21 | 가공식품2 | 0.473 | -0.606 | pickup_zone |
+| 22 | 음료1 | 0.704 | -0.899 | pickup_zone |
 | 23 | 음료2 | 0.715 | -1.197 | pickup_zone |
+| 24 | 진열대1_좌측우회 | 0.300 | -0.450 | detour |
+| 25 | 진열대1_우측우회 | 0.920 | -0.440 | detour |
+| 26 | 진열대2_우측우회 | 0.960 | -1.050 | detour |
+| 27 | 진열대2_좌측우회 | 0.460 | -1.050 | detour (26번 대칭) |
 
 충전소: **P1 (idx=2)** → pinky_54, **P2 (idx=3)** → pinky_18
+
+> 시각화: `docs/nav_graph_viz.png` / 생성 스크립트: `scripts/visualize_nav_graph.py`
+
+### 3.4 우회 경로 (Detour)
+
+진열대를 관통하는 직선 경로를 제거하고 우회 waypoint를 추가.
+
+| 관통 구간 | 우회 경로 | 우회 방향 |
+|---|---|---|
+| 18↔21 (진열대1) | 18 ↔ 24 ↔ 21 | 좌측 |
+| 19↔20 (진열대1) | 19 ↔ 25 ↔ 20 | 우측 |
+| 22↔23 (진열대2) | 22 ↔ 26 ↔ 23 | 우측 |
+| 22↔23 (진열대2) | 22 ↔ 27 ↔ 23 | 좌측 (26 대칭) |
 
 ---
 
