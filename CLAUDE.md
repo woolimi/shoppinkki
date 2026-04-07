@@ -34,6 +34,7 @@ pip install transitions              # SM 라이브러리 (shoppinkki_core)
 pip install flask flask-socketio     # customer_web
 pip install ultralytics              # YOLO (ai_server)
 pip install mysql-connector-python   # control_service DB 접속
+pip install qrcode[pil]              # Pi LCD QR 코드 표시 (shoppinkki_core)
 ```
 
 **Open-RMF 의존 패키지 (shoppinkki_rmf 빌드 시):**

@@ -50,6 +50,7 @@ class HWController:
         self._led_client = None
         self._emotion_client = None
         self._lamp_client = None
+        self._lcd = None          # pinky_lcd.LCD 인스턴스 (Pi 전용, 지연 초기화)
 
         if node is not None:
             self._init_clients()
@@ -127,31 +128,164 @@ class HWController:
         except Exception as e:
             logger.warning('set_emotion failed: %s', e)
 
-    def set_lcd_text(self, text: str) -> None:
-        """Display plain text on the LCD (non-IDLE states)."""
-        logger.info('LCD: %s', text)
-        # LCD text display is handled by the emotion node's text mode
-        # For now, log only; full impl requires custom LCD service
+    # ── LCD 텍스트 / QR 렌더링 ─────────────────
+
+    # IDLE 상태에서 표시할 고객 웹 URL
+    CUSTOMER_WEB_URL = 'http://192.168.102.100:8501'
+
+    _TEXT_LINES = {
+        'CHARGING':  ['충전 중'],
+        'SEARCHING': ['주인', '탐색 중'],
+        'WAITING':   ['잠깐', '기다려요'],
+        'GUIDING':   ['목적지', '안내 중'],
+        'RETURNING': ['충전소로', '이동 중'],
+        'LOCKED':    ['긴급', '복귀 중'],
+        'HALTED':    ['배터리', '부족'],
+    }
+    _BG_COLORS = {
+        'CHARGING':  (20,  20,  80),
+        'SEARCHING': (80,  40,   0),
+        'WAITING':   (60,   0,  60),
+        'GUIDING':   (0,   60,  60),
+        'RETURNING': (60,  20,  20),
+        'LOCKED':    (100,  0,   0),
+        'HALTED':    (100,  0,   0),
+    }
+    _FONT_PATHS = [
+        '/usr/share/fonts/truetype/nanum/NanumSquareRoundB.ttf',
+        '/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf',
+        '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+        '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
+    ]
+
+    def _get_lcd(self):
+        """pinky_lcd.LCD 인스턴스를 반환. Pi가 아니거나 초기화 실패 시 None."""
+        if self._lcd is not None:
+            return self._lcd
+        try:
+            from pinky_emotion.pinky_lcd import LCD as PinkyLCD
+            self._lcd = PinkyLCD()
+            return self._lcd
+        except Exception as e:
+            logger.debug('pinky_lcd 초기화 실패 (Non-Pi 정상): %s', e)
+            return None
+
+    def _get_font(self, size: int = 40):
+        """한글 지원 폰트 로드. 없으면 기본 폰트 반환."""
+        try:
+            from PIL import ImageFont
+            for fp in self._FONT_PATHS:
+                try:
+                    return ImageFont.truetype(fp, size)
+                except Exception:
+                    pass
+            return ImageFont.load_default()
+        except ImportError:
+            return None
+
+    def _lcd_show(self, target_portrait):
+        """240×320 portrait PIL 이미지를 LCD에 표시.
+
+        img_show()는 FLIP_LEFT_RIGHT → ROTATE_270 을 내부 적용하므로
+        역변환 source = FLIP_LR( ROTATE_90_CW(target) )을 먼저 적용한다.
+        """
+        from PIL import Image
+        source = target_portrait.transpose(Image.ROTATE_90).transpose(Image.FLIP_LEFT_RIGHT)
+        lcd = self._get_lcd()
+        if lcd is not None:
+            try:
+                lcd.img_show(source)
+            except Exception as e:
+                logger.warning('LCD img_show 실패: %s', e)
+
+    def display_state_text(self, state: str) -> None:
+        """상태 텍스트를 PIL로 LCD에 렌더링."""
+        try:
+            from PIL import Image, ImageDraw
+        except ImportError:
+            logger.debug('PIL 없음 — LCD 텍스트 스킵')
+            return
+
+        lines = self._TEXT_LINES.get(state, [state])
+        bg    = self._BG_COLORS.get(state, (30, 30, 30))
+        font  = self._get_font(40)
+        if font is None:
+            return
+
+        target = Image.new('RGB', (240, 320), color=bg)
+        draw   = ImageDraw.Draw(target)
+
+        line_height = 52
+        total_h     = len(lines) * line_height
+        start_y     = (320 - total_h) // 2
+
+        for i, line in enumerate(lines):
+            bbox   = draw.textbbox((0, 0), line, font=font)
+            text_w = bbox[2] - bbox[0]
+            x = (240 - text_w) // 2
+            y = start_y + i * line_height
+            draw.text((x, y), line, fill=(255, 255, 255), font=font)
+
+        self._lcd_show(target)
+
+    def display_qr(self, url: str, label: str = '') -> None:
+        """URL QR 코드를 LCD에 표시. label이 있으면 하단에 작은 텍스트로 표시."""
+        try:
+            import qrcode
+            from PIL import Image, ImageDraw
+        except ImportError:
+            logger.debug('qrcode/PIL 없음 — QR 스킵')
+            return
+
+        qr = qrcode.QRCode(box_size=4, border=2)
+        qr.add_data(url)
+        qr.make(fit=True)
+        qr_img = qr.make_image(fill_color='black', back_color='white').convert('RGB')
+
+        # 240×320 portrait 배경에 QR 중앙 배치
+        target = Image.new('RGB', (240, 320), color=(255, 255, 255))
+        qw, qh = qr_img.size
+        # 최대 220×260 에 맞게 비율 축소
+        max_w, max_h = 220, 260
+        scale = min(max_w / qw, max_h / qh)
+        qw2 = int(qw * scale)
+        qh2 = int(qh * scale)
+        qr_img = qr_img.resize((qw2, qh2), Image.LANCZOS)
+
+        x_off = (240 - qw2) // 2
+        if label:
+            y_off = (320 - qh2) // 2 - 15
+        else:
+            y_off = (320 - qh2) // 2
+        target.paste(qr_img, (x_off, y_off))
+
+        if label:
+            draw = ImageDraw.Draw(target)
+            font = self._get_font(18)
+            if font:
+                bbox   = draw.textbbox((0, 0), label, font=font)
+                text_w = bbox[2] - bbox[0]
+                lx = (240 - text_w) // 2
+                ly = y_off + qh2 + 6
+                draw.text((lx, ly), label, fill=(0, 0, 0), font=font)
+
+        self._lcd_show(target)
 
     def set_lcd_for_state(self, state: str) -> None:
-        """Update LCD content based on SM state."""
-        text_map = {
-            'CHARGING': '충전 중',
-            'IDLE': '',             # QR code shown by separate QR node
-            'TRACKING': '추종 중',
-            'TRACKING_CHECKOUT': '결제 완료 — 추종 중',
-            'GUIDING': '목적지 안내 중',
-            'SEARCHING': '주인 탐색 중',
-            'WAITING': '대기 중',
-            'LOCKED': '충전소 이동 중',
-            'RETURNING': '충전소 이동 중',
-            'HALTED': '배터리 부족',
-        }
-        text = text_map.get(state, state)
-        if state == 'IDLE':
-            # QR display is handled externally
+        """SM 상태에 따라 LCD 내용 갱신.
+
+        TRACKING / TRACKING_CHECKOUT: 카메라 피드가 표시하므로 건드리지 않음.
+        IDLE: 고객 웹 QR 코드 표시.
+        나머지: 한글 상태 텍스트 표시.
+        """
+        if state in ('TRACKING', 'TRACKING_CHECKOUT'):
             return
-        self.set_lcd_text(text)
+        if state == 'IDLE':
+            logger.info('LCD: QR (%s)', self.CUSTOMER_WEB_URL)
+            self.display_qr(self.CUSTOMER_WEB_URL, label='쑈삥끼 앱')
+            return
+        logger.info('LCD 상태 표시: %s', state)
+        self.display_state_text(state)
 
     # ── Buzzer ────────────────────────────────
 
