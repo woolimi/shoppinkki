@@ -16,9 +16,11 @@ SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROS_WS="$(dirname "$SCRIPTS_DIR")"
 SESSION="sp_sim"
 
-source "$SCRIPTS_DIR/_ros_env.sh"
-
-ROS_ENV="$TMUX_ROS_ENV"
+# Ubuntu + apt ROS 고정: conda 환경과 분리해서 실행
+ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-74}"
+ROS_ENV="export ROS_DOMAIN_ID=${ROS_DOMAIN_ID}"
+APT_ROS_SRC="source /opt/ros/jazzy/setup.zsh && source $ROS_WS/install/setup.zsh"
+APT_CLEAN_ENV="export PATH=/usr/bin:/bin:/usr/sbin:/sbin; unset CONDA_PREFIX CONDA_DEFAULT_ENV CONDA_EXE CONDA_PYTHON_EXE CONDA_SHLVL _CE_M _CE_CONDA PYTHONHOME PYTHONPATH RUBYLIB RUBYOPT GEM_HOME GEM_PATH"
 
 # ── 환경 확인 ──────────────────────────────────────────────────────────────────
 if ! command -v tmux &>/dev/null; then
@@ -40,20 +42,21 @@ tmux set-option -g mouse on 2>/dev/null || true
 # 창 0: Gazebo + Nav2 x2
 tmux new-session -d -s "$SESSION" -n "gz"
 tmux send-keys -t "${SESSION}:gz" \
-    "$TMUX_SRC && $ROS_ENV && cd $ROS_WS && ros2 launch shoppinkki_nav gz_multi_robot.launch.py" Enter
+    "$APT_CLEAN_ENV && $APT_ROS_SRC && $ROS_ENV && cd $ROS_WS && ros2 launch shoppinkki_nav gz_multi_robot.launch.py" Enter
 
 # 창 1–2: shoppinkki_core (ros2 run 은 shebang 시스템 python → conda pip 무시; env python3)
 _SHOP_CORE_MAIN="$ROS_WS/install/shoppinkki_core/lib/shoppinkki_core/main_node"
+_WAIT_SIM_CLOCK="ros2 topic echo -n 1 /clock >/dev/null 2>&1"
 
 # 창 1: shoppinkki_core 로봇 54
 tmux new-window -t "${SESSION}" -n "core54"
 tmux send-keys -t "${SESSION}:core54" \
-    "$TMUX_SRC && $ROS_ENV && ROBOT_ID=54 env python3 $_SHOP_CORE_MAIN --ros-args -p use_sim_time:=true" Enter
+    "$APT_CLEAN_ENV && $APT_ROS_SRC && $ROS_ENV && $_WAIT_SIM_CLOCK && ROBOT_ID=54 env python3 $_SHOP_CORE_MAIN --ros-args -p use_sim_time:=true" Enter
 
 # 창 2: shoppinkki_core 로봇 18
 tmux new-window -t "${SESSION}" -n "core18"
 tmux send-keys -t "${SESSION}:core18" \
-    "$TMUX_SRC && $ROS_ENV && ROBOT_ID=18 env python3 $_SHOP_CORE_MAIN --ros-args -p use_sim_time:=true" Enter
+    "$APT_CLEAN_ENV && $APT_ROS_SRC && $ROS_ENV && $_WAIT_SIM_CLOCK && ROBOT_ID=18 env python3 $_SHOP_CORE_MAIN --ros-args -p use_sim_time:=true" Enter
 
 tmux select-window -t "${SESSION}:gz"
 
