@@ -17,7 +17,7 @@
 
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROS_WS="$(dirname "$SCRIPTS_DIR")"
-ROBOT_ID="${1:-${ROBOT_ID:-54}}"
+ROBOT_ID="${1:-${PINKY_ID:-54}}"
 SESSION="sp_robot"
 
 source "$SCRIPTS_DIR/_ros_env.sh"
