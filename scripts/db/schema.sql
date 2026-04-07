@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS PRODUCT (
     product_id   INT          NOT NULL AUTO_INCREMENT,
     product_name VARCHAR(100) NOT NULL,
     zone_id      INT          NOT NULL,
+    price        INT          NOT NULL DEFAULT 0,
     PRIMARY KEY (product_id),
     FOREIGN KEY (zone_id) REFERENCES ZONE(zone_id)
 ) ENGINE=InnoDB;
