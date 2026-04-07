@@ -56,7 +56,7 @@ tmux send-keys -t "${SESSION}:nav" \
 # Nav2 초기화 대기 후 실행 (30초)
 tmux new-window -t "${SESSION}" -n "core"
 tmux send-keys -t "${SESSION}:core" \
-    "$TMUX_SRC && $ROS_ENV && ROBOT_ID=$ROBOT_ID && sleep 30 && ros2 run shoppinkki_core main_node" Enter
+    "$TMUX_SRC && $ROS_ENV && export ROBOT_ID=$ROBOT_ID && sleep 30 && ros2 run shoppinkki_core main_node" Enter
 
 # 창 3: 디버깅 셸
 tmux new-window -t "${SESSION}" -n "shell"
