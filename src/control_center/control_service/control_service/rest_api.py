@@ -11,6 +11,7 @@ GET  /boundary                        → all boundary configs
 GET  /events?limit=<n>                → recent event log
 
 POST /session                         → create session
+GET  /session/robot/<robot_id>        → active session by robot_id
 GET  /session/<id>                    → get session
 PATCH /session/<id>                   → end session ({"is_active": 0})
 
@@ -56,6 +57,7 @@ def create_app(robot_manager: 'RobotManager',
                 'pos_y': s.pos_y,
                 'battery': s.battery,
                 'is_locked_return': s.is_locked_return,
+                'active_user_id': s.active_user_id,
             }
             for rid, s in states.items()
         })
@@ -106,9 +108,25 @@ def create_app(robot_manager: 'RobotManager',
         if not user:
             return jsonify({'error': 'user not found'}), 404
 
+        # Check robot availability by mode
+        robot = db.get_robot(robot_id)
+        if robot:
+            mode = robot.get('current_mode')
+            if mode == 'CHARGING':
+                return jsonify({'error': 'robot is charging'}), 409
+            if mode in ('RETURNING', 'LOCKED'):
+                return jsonify({'error': 'robot is returning'}), 409
+
         # Check for existing active session on same robot
         existing = db.get_active_session_by_robot(robot_id)
         if existing:
+            # 같은 사용자가 같은 로봇에 재로그인 → 기존 세션 반환
+            if existing.get('user_id') == user_id:
+                cart = db.get_cart_by_session(existing['session_id'])
+                return jsonify({
+                    'session_id': existing['session_id'],
+                    'cart_id': cart['cart_id'] if cart else None,
+                }), 200
             return jsonify({'error': 'robot already in session',
                             'session_id': existing['session_id']}), 409
 
@@ -135,6 +153,17 @@ def create_app(robot_manager: 'RobotManager',
             'session_id': session_id,
             'cart_id': cart['cart_id'] if cart else None,
         }), 201
+
+    @app.get('/session/robot/<robot_id>')
+    def get_session_by_robot(robot_id: str):
+        session = db.get_active_session_by_robot(robot_id)
+        if not session:
+            return jsonify({'error': 'no active session'}), 404
+        cart = db.get_cart_by_session(session['session_id'])
+        return jsonify({
+            'session_id': session['session_id'],
+            'cart_id': cart['cart_id'] if cart else None,
+        })
 
     @app.get('/session/<int:session_id>')
     def get_session(session_id: int):

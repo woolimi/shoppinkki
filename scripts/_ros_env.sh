@@ -13,8 +13,21 @@
 #   TMUX_SRC   — tmux send-keys 용 원라인 (항상 zsh 호환 파일 사용)
 #   CONDA_BIN  — conda env bin 경로 (없으면 "")
 
-_SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
+# $0 은 source 시 상위 스크립트 이름일 수 있음(bash); bash -c 'source …' 는 $0=bash 가 되기도 함
+_ROS_ENV_SELF="$0"
+if [ -n "${BASH_VERSION:-}" ]; then
+    # dash 등에서는 BASH_SOURCE 를 건드리지 않음
+    # shellcheck disable=SC3054
+    [ -n "${BASH_SOURCE[0]:-}" ] && _ROS_ENV_SELF="${BASH_SOURCE[0]}"
+fi
+_SCRIPTS_DIR="$(cd "$(dirname "$_ROS_ENV_SELF")" && pwd)"
 _ROS_WS="$(dirname "$_SCRIPTS_DIR")"
+
+# ── 공통 ROS 설정 ──────────────────────────────────────────────────────────────
+# 모든 tmux 실행 스크립트에서 단일 소스로 사용한다.
+# 외부에서 ROS_DOMAIN_ID 를 지정하면 그 값을 우선 사용한다.
+export ROS_DOMAIN_ID="14"
+TMUX_ROS_ENV="export ROS_DOMAIN_ID=${ROS_DOMAIN_ID}"
 
 # ── 1. conda env 탐색 ─────────────────────────────────────────────────────────
 # ROS 가 apt 로 설치되었든 conda(RoboStack) 로 설치되었든,

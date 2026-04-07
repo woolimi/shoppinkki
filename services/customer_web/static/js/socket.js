@@ -46,8 +46,14 @@ socket.on("control_connected", (data) => {
   bar.textContent = data.connected ? "" : "⚠ 서버 연결 중...";
 });
 
+// 내 로봇 메시지인지 확인 (다른 로봇 status/cart 무시)
+function _isMyRobot(data) {
+  return !data.robot_id || String(data.robot_id) === String(window.ROBOT_ID);
+}
+
 // status — 1~2Hz push
 socket.on("status", (data) => {
+  if (!_isMyRobot(data)) return;
   updateStatusBar(data);
   updatePanelVisibility(data.my_robot?.mode ?? data.mode);
   updateFollowDisabledBanner(data.my_robot?.follow_disabled ?? data.follow_disabled);
@@ -58,6 +64,7 @@ socket.on("status", (data) => {
 
 // cart
 socket.on("cart", (data) => {
+  if (!_isMyRobot(data)) return;
   updateCart(data.items || []);
 });
 
@@ -116,8 +123,7 @@ socket.on("staff_resolved", () => {
 // ── 상태바 갱신 ──────────────────────────────────────────────
 
 function updateStatusBar(data) {
-  const robot = data.my_robot || {};
-  const mode = robot.mode || "OFFLINE";
+  const mode = data.my_robot?.mode ?? data.mode ?? "OFFLINE";
   currentMode = mode;
 
   const badgeEl = document.getElementById("mode-badge");
@@ -128,7 +134,7 @@ function updateStatusBar(data) {
 
   const battEl = document.getElementById("battery-level");
   if (battEl) {
-    const batt = robot.battery ?? "--";
+    const batt = data.my_robot?.battery ?? data.battery ?? "--";
     battEl.textContent = "🔋" + batt + "%";
     battEl.style.color = batt < 20 ? "#ef4444" : "";
   }
@@ -142,12 +148,14 @@ function updatePanelVisibility(mode) {
   if (!mode) return;
   currentMode = mode;
 
+  const panelCharging = document.getElementById("panel-charging");
   const panelIdle     = document.getElementById("panel-idle");
   const panelShopping = document.getElementById("panel-shopping");
   const panelLocked   = document.getElementById("panel-locked");
   const panelHalted   = document.getElementById("panel-halted");
 
   // 패널 전환
+  _setActive(panelCharging, mode === "CHARGING");
   _setActive(panelIdle,     mode === "IDLE");
   _setActive(panelShopping, SHOPPING_MODES.includes(mode));
   _setActive(panelLocked,   mode === "LOCKED" || mode === "RETURNING");
@@ -216,7 +224,8 @@ function sessionEnd() {
   // 로그아웃 POST 후 리다이렉트
   fetch("/logout", { method: "POST" })
     .finally(() => {
-      window.location.href = "/login";
+      const rid = window.ROBOT_ID;
+      window.location.href = rid ? `/login?robot_id=${rid}` : "/login";
     });
 }
 
@@ -402,11 +411,14 @@ function closeMapOverlay() {
 // ── 쇼핑 종료 ──────────────────────────────────────────────────
 
 function requestReturn() {
+  let msg = "쑈삥끼 사용을 끝내시겠습니까?";
   if (hasUnpaidItems()) {
-    const ok = confirm("미결제 물건이 있습니다. 종료하면 카트가 잠길 수 있습니다.\n계속하시겠습니까?");
-    if (!ok) return;
+    msg += "\n\n⚠️ 미결제 항목이 있습니다. 종료 시 미결제 항목은 자동 반환처리됩니다.";
   }
+  const ok = confirm(msg);
+  if (!ok) return;
   socket.emit("return", {});
+  sessionEnd();
 }
 
 // ── STT (Web Speech API) ───────────────────────────────────────

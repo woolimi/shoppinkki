@@ -15,6 +15,28 @@ scripts/
 
 ---
 
+## ROS_DOMAIN_ID 관리
+
+tmux 기반 실행 스크립트(`run_server.sh`, `run_ui.sh`, `run_sim.sh`, `run_robot.sh`)는
+모두 `scripts/_ros_env.sh`에서 `ROS_DOMAIN_ID`를 공통으로 설정해 사용합니다.
+
+- 기본값: `14`
+- 설정 위치: `scripts/_ros_env.sh`
+  - `export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-14}"`
+
+기본값을 바꾸고 싶다면 위 줄의 `14`만 변경하면 전체 스크립트에 반영됩니다.
+
+실행 시 1회성으로 덮어쓰려면 환경변수로 지정하세요:
+
+```bash
+ROS_DOMAIN_ID=20 bash scripts/run_server.sh
+ROS_DOMAIN_ID=20 bash scripts/run_ui.sh
+ROS_DOMAIN_ID=20 bash scripts/run_sim.sh
+ROS_DOMAIN_ID=20 bash scripts/run_robot.sh 54
+```
+
+---
+
 ## 개발 워크플로우
 
 ### 시뮬레이션 (실물 없을 때)

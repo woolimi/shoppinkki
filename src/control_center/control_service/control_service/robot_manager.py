@@ -209,8 +209,11 @@ class RobotManager:
             self._handle_process_payment(robot_id, payload)
         elif cmd == 'qr_scan':
             self._handle_qr_scan(robot_id, payload)
+        elif cmd == 'update_quantity':
+            self._handle_update_quantity(robot_id, payload)
         elif cmd in ('navigate_to', 'mode', 'resume_tracking',
-                     'delete_item', 'start_session', 'enter_simulation'):
+                     'delete_item', 'start_session', 'enter_simulation',
+                     'return'):
             self._relay_to_pi(robot_id, payload)
         else:
             logger.warning('Unknown web cmd=%s', cmd)
@@ -270,8 +273,38 @@ class RobotManager:
         items = db.get_cart_items(cart['cart_id'])
         self._push_web(robot_id, {
             'type': 'cart',
-            'items': [dict(r) for r in items] if items else [],
+            'items': self._format_cart_items(items),
         })
+
+    def _handle_update_quantity(self, robot_id: str, payload: dict) -> None:
+        """장바구니 항목 수량 변경."""
+        item_id  = payload.get('item_id')
+        quantity = payload.get('quantity')
+        if item_id is None or quantity is None:
+            return
+        db.update_cart_item_quantity(item_id, int(quantity))
+        session = db.get_active_session_by_robot(robot_id)
+        if not session:
+            return
+        cart = db.get_cart_by_session(session['session_id'])
+        if not cart:
+            return
+        items = db.get_cart_items(cart['cart_id'])
+        self._push_web(robot_id, {
+            'type': 'cart',
+            'items': self._format_cart_items(items),
+        })
+
+    @staticmethod
+    def _format_cart_items(rows: list) -> list:
+        """DB CART_ITEM 행을 브라우저 스펙(id/name/quantity) 형식으로 변환."""
+        return [{
+            'id':       r['item_id'],
+            'name':     r['product_name'],
+            'price':    r['price'],
+            'quantity': r.get('quantity', 1),
+            'is_paid':  bool(r['is_paid']),
+        } for r in rows]
 
     # ──────────────────────────────────────────
     # Bbox update (from camera_stream / AI server)

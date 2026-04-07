@@ -14,16 +14,30 @@
   <div class="blocked-container">
     <span class="blocked-icon">🚫</span>
     <h2>카트 사용 불가</h2>
+    {% if reason == "charging" %}
+    <p>
+      해당 카트는 현재 충전이 필요합니다.<br>
+      충전 완료 후 이용 가능합니다.<br><br>
+      잠시 후 다시 시도해주세요.
+    </p>
+    {% elif reason == "returning" %}
+    <p>
+      해당 카트는 현재 복귀중이므로<br>
+      이용이 불가능합니다.<br><br>
+      잠시 후 다시 시도해주세요.
+    </p>
+    {% else %}
     <p>
       현재 다른 사용자가 이 카트를<br>
       이용 중입니다.<br><br>
       잠시 후 다시 시도해주세요.
     </p>
+    {% endif %}
     <button class="btn btn-primary btn-full" onclick="location.reload()">
       새로고침
     </button>
     <br>
-    <a href="/login" class="btn btn-outline btn-full" style="margin-top: 10px;">
+    <a href="/login{% if robot_id %}?robot_id={{ robot_id }}{% endif %}" class="btn btn-outline btn-full" style="margin-top: 10px;">
       로그인 화면으로
     </a>
   </div>

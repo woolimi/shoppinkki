@@ -93,12 +93,11 @@ class CmdHandler:
     # ──────────────────────────────────────────
 
     def _handle_start_session(self, payload: dict) -> None:
-        """CHARGING → IDLE."""
+        """세션 시작 알림 (IDLE 상태에서만 유효)."""
         user_id = payload.get('user_id', '')
-        if self.sm.state != 'CHARGING':
+        if self.sm.state != 'IDLE':
             logger.warning('start_session ignored in state=%s', self.sm.state)
             return
-        self.sm.charging_completed()
         if self._on_start_session:
             self._on_start_session(user_id)
         logger.info('Session started for user=%s', user_id)

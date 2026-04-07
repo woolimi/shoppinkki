@@ -71,7 +71,7 @@ def register_handlers(socketio, control_clients: dict, llm_cfg: dict):
     def on_return(data=None):
         robot_id, cc = _get_client()
         if cc:
-            cc.send({"cmd": "return", "robot_id": robot_id})
+            cc.send({"cmd": "mode", "robot_id": robot_id, "value": "RETURNING"})
 
     # ── 상품 안내 ──────────────────────────────────────────────
 
@@ -134,6 +134,20 @@ def register_handlers(socketio, control_clients: dict, llm_cfg: dict):
         if cc:
             logger.info("enter_simulation 요청 (robot_id=%s)", robot_id)
             cc.send({"cmd": "enter_simulation", "robot_id": robot_id})
+
+    # ── 장바구니 수량 변경 ─────────────────────────────────────
+
+    @socketio.on("update_quantity")
+    def on_update_quantity(data):
+        """{"item_id": N, "quantity": N}"""
+        item_id  = data.get("item_id")  if isinstance(data, dict) else None
+        quantity = data.get("quantity") if isinstance(data, dict) else None
+        if item_id is None or quantity is None:
+            return
+        robot_id, cc = _get_client()
+        if cc:
+            cc.send({"cmd": "update_quantity", "robot_id": robot_id,
+                     "item_id": item_id, "quantity": quantity})
 
     # ── 자연어 상품 검색 ───────────────────────────────────────
 

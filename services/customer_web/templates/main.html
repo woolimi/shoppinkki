@@ -12,6 +12,7 @@
     window.MAP_ORIGIN_X   = {{ map_origin_x   | default(-0.1) }};
     window.MAP_ORIGIN_Y   = {{ map_origin_y   | default(-0.1) }};
     window.MAP_IMAGE_URL  = "/static/map/shop.png";
+    window.ROBOT_ID       = "{{ robot_id }}";
   </script>
 </head>
 <body>
@@ -31,7 +32,7 @@
   <!-- ─────────────────────────────────────────────────────────────
        3-B. 인형 등록 패널 (mode=IDLE)
   ───────────────────────────────────────────────────────────── -->
-  <div id="panel-idle" class="panel active">
+  <div id="panel-idle" class="panel">
     <div class="card">
       <div class="spinner-wrap">
         <span style="font-size: 40px;">📷</span>
@@ -118,6 +119,17 @@
   <!-- ─────────────────────────────────────────────────────────────
        3-I. HALTED 알림 패널
   ───────────────────────────────────────────────────────────── -->
+  <div id="panel-charging" class="panel">
+    <div class="card alert-panel">
+      <span class="alert-icon">⚡</span>
+      <h2>카트 준비 중</h2>
+      <p>
+        카트가 곧 준비됩니다.<br>
+        <strong>잠시 기다려 주세요.</strong>
+      </p>
+    </div>
+  </div>
+
   <div id="panel-halted" class="panel">
     <div class="card alert-panel">
       <span class="alert-icon">🔋</span>
@@ -162,7 +174,10 @@
 ───────────────────────────────────────────────────────────── -->
 <div id="qr-overlay" class="overlay hidden" role="dialog" aria-modal="true" aria-label="QR 스캔">
   <div class="overlay-box">
-    <div class="overlay-title">📷 상품 담기</div>
+    <div class="overlay-title-row">
+      <span class="overlay-title">📷 상품 담기</span>
+      <button class="btn-overlay-close" onclick="closeQrPanel()" aria-label="닫기">✕</button>
+    </div>
     <div class="qr-instruction">상품 QR 코드를 스캔하세요</div>
     <!-- 시뮬레이션 모드: 웹 카메라 뷰파인더 -->
     <div id="qr-camera-wrap" style="display:none; position:relative; margin-bottom:12px;">

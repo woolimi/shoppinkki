@@ -22,7 +22,7 @@ SESSION="sp_robot"
 
 source "$SCRIPTS_DIR/_ros_env.sh"
 
-ROS_ENV="export ROS_DOMAIN_ID=14"
+ROS_ENV="$TMUX_ROS_ENV"
 
 # ── 환경 확인 ──────────────────────────────────────────────────────────────────
 if ! command -v tmux &>/dev/null; then

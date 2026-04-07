@@ -35,7 +35,7 @@ except ImportError:
 
 from .bt_runner import BTRunner
 from .cmd_handler import CmdHandler
-from .config import BATTERY_THRESHOLD
+from .config import BATTERY_THRESHOLD, CHARGING_COMPLETE_THRESHOLD
 from .hw_controller import HWController
 from .state_machine import ShoppinkiSM
 
@@ -171,8 +171,13 @@ class ShoppinkiMainNode(Node):
     def _bt_tick_callback(self) -> None:
         # Battery check (HALTED trigger)
         if self._battery < BATTERY_THRESHOLD and self.sm.state != 'HALTED':
-            self.get_logger().warning('Battery low (%.0f%%) → HALTED', self._battery)
+            self.get_logger().warning(f'Battery low ({self._battery:.0f}%) → HALTED')
             self.sm.enter_halted()
+            return
+        # CHARGING → IDLE: 배터리 충분하면 자동 전환
+        if self.sm.state == 'CHARGING' and self._battery >= CHARGING_COMPLETE_THRESHOLD:
+            self.get_logger().info(f'Battery {self._battery:.0f}% >= {CHARGING_COMPLETE_THRESHOLD}% → IDLE')
+            self.sm.charging_completed()
             return
         self.bt_runner.tick()
 

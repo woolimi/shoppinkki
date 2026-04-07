@@ -18,7 +18,7 @@ SESSION="sp_sim"
 
 source "$SCRIPTS_DIR/_ros_env.sh"
 
-ROS_ENV="export ROS_DOMAIN_ID=14"
+ROS_ENV="$TMUX_ROS_ENV"
 
 # ── 환경 확인 ──────────────────────────────────────────────────────────────────
 if ! command -v tmux &>/dev/null; then
@@ -42,15 +42,18 @@ tmux new-session -d -s "$SESSION" -n "gz"
 tmux send-keys -t "${SESSION}:gz" \
     "$TMUX_SRC && $ROS_ENV && cd $ROS_WS && ros2 launch shoppinkki_nav gz_multi_robot.launch.py" Enter
 
+# 창 1–2: shoppinkki_core (ros2 run 은 shebang 시스템 python → conda pip 무시; env python3)
+_SHOP_CORE_MAIN="$ROS_WS/install/shoppinkki_core/lib/shoppinkki_core/main_node"
+
 # 창 1: shoppinkki_core 로봇 54
 tmux new-window -t "${SESSION}" -n "core54"
 tmux send-keys -t "${SESSION}:core54" \
-    "$TMUX_SRC && $ROS_ENV && ROBOT_ID=54 ros2 run shoppinkki_core main_node --ros-args -p use_sim_time:=true" Enter
+    "$TMUX_SRC && $ROS_ENV && ROBOT_ID=54 env python3 $_SHOP_CORE_MAIN --ros-args -p use_sim_time:=true" Enter
 
 # 창 2: shoppinkki_core 로봇 18
 tmux new-window -t "${SESSION}" -n "core18"
 tmux send-keys -t "${SESSION}:core18" \
-    "$TMUX_SRC && $ROS_ENV && ROBOT_ID=18 ros2 run shoppinkki_core main_node --ros-args -p use_sim_time:=true" Enter
+    "$TMUX_SRC && $ROS_ENV && ROBOT_ID=18 env python3 $_SHOP_CORE_MAIN --ros-args -p use_sim_time:=true" Enter
 
 tmux select-window -t "${SESSION}:gz"
 

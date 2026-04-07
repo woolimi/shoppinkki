@@ -23,8 +23,9 @@ SEARCH_TIMEOUT: float = 30.0  # SEARCHING → WAITING timeout (s)
 WAITING_TIMEOUT: int = 300    # WAITING  → RETURNING timeout (s)
 
 # ── Battery ───────────────────────────────────
-BATTERY_THRESHOLD: int = 20   # battery % below which HALTED triggers
-                               # (raise to 90 for bench testing)
+BATTERY_THRESHOLD: int = 20          # battery % below which HALTED triggers
+                                     # (raise to 90 for bench testing)
+CHARGING_COMPLETE_THRESHOLD: int = 80  # battery % above which CHARGING → IDLE
 
 # ── Robot connectivity ────────────────────────
 ROBOT_TIMEOUT_SEC: int = 30   # seconds without /status → OFFLINE

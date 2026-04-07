@@ -4,6 +4,7 @@
     Mesh collision → boxes. Matrices from shop.dae applied as row-major (Blender export).
     Perimeter walls + divider (2 boxes) + section_* / sectinon_* AABB (row-major DAE matrices).
     Collision height z=0.35 m (pose z=0.175) so Pinky hits shelves; floor = shop.world ground_plane.
+    Map: 1.88 x 1.4 m (scaled x by 1.044444 from original 1.8 x 1.4 m)
   -->
   <model name="shop">
     <static>true</static>
@@ -13,30 +14,30 @@
         <geometry>
           <mesh>
             <uri>meshes/shop.dae</uri>
-            <scale>1 1 1</scale>
+            <scale>1.044444 1 1</scale>
           </mesh>
         </geometry>
       </visual>
 
       <!-- Perimeter walls -->
       <collision name="wall_south">
-        <pose>0.898182 -0.00499 0.175 0 0 0</pose>
+        <pose>0.938101 -0.00499 0.175 0 0 0</pose>
         <geometry>
           <box>
-            <size>1.796364 0.02 0.35</size>
+            <size>1.876202 0.02 0.35</size>
           </box>
         </geometry>
       </collision>
       <collision name="wall_north">
-        <pose>0.898165 1.402159 0.175 0 0 0</pose>
+        <pose>0.938083 1.402159 0.175 0 0 0</pose>
         <geometry>
           <box>
-            <size>1.796364 0.02 0.35</size>
+            <size>1.876202 0.02 0.35</size>
           </box>
         </geometry>
       </collision>
       <collision name="wall_west">
-        <pose>-0.00499 0.698584 0.175 0 0 0</pose>
+        <pose>-0.005212 0.698584 0.175 0 0 0</pose>
         <geometry>
           <box>
             <size>0.02 1.417131 0.35</size>
@@ -44,7 +45,7 @@
         </geometry>
       </collision>
       <collision name="wall_east">
-        <pose>1.801354 0.698584 0.175 0 0 0</pose>
+        <pose>1.881414 0.698584 0.175 0 0 0</pose>
         <geometry>
           <box>
             <size>0.02 1.417131 0.35</size>
@@ -54,7 +55,7 @@
 
       <!-- divider: L = thin bar along +x + thin bar along +y (local AABBs → same DAE matrix) -->
       <collision name="divider_arm_y">
-        <pose>1.344758 0.299388 0.175 0 0 0</pose>
+        <pose>1.404525 0.299388 0.175 0 0 0</pose>
         <geometry>
           <box>
             <size>0.02 0.199596 0.35</size>
@@ -64,66 +65,66 @@
 
       <!-- section_* (DAE node sectinon_meat = meat) -->
       <collision name="section_meat">
-        <pose>0.265956 1.445972 0.175 0 0 0</pose>
+        <pose>0.277776 1.445972 0.175 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.529941 0.099798 0.35</size>
+            <size>0.553494 0.099798 0.35</size>
           </box>
         </geometry>
       </collision>
       <collision name="section_seafood">
-        <pose>0.882807 1.445972 0.175 0 0 0</pose>
+        <pose>0.922043 1.445972 0.175 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.530374 0.099798 0.35</size>
+            <size>0.553946 0.099798 0.35</size>
           </box>
         </geometry>
       </collision>
       <collision name="section_frizer">
-        <pose>0.603808 0.769007 0.175 0 0 0</pose>
+        <pose>0.630644 0.769007 0.175 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.05003 0.419503 0.35</size>
+            <size>0.052254 0.419503 0.35</size>
           </box>
         </geometry>
       </collision>
       <collision name="section_refriger">
-        <pose>0.553778 0.769007 0.175 0 0 0</pose>
+        <pose>0.578390 0.769007 0.175 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.05003 0.419503 0.35</size>
+            <size>0.052254 0.419503 0.35</size>
           </box>
         </geometry>
       </collision>
       <collision name="section_electronics">
-        <pose>-0.048914 0.767819 0.175 0 0 0</pose>
+        <pose>-0.051088 0.767819 0.175 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.099798 0.419503 0.35</size>
+            <size>0.104233 0.419503 0.35</size>
           </box>
         </geometry>
       </collision>
       <collision name="section_snacks">
-        <pose>-0.048914 1.187322 0.175 0 0 0</pose>
+        <pose>-0.051088 1.187322 0.175 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.099798 0.419503 0.35</size>
+            <size>0.104233 0.419503 0.35</size>
           </box>
         </geometry>
       </collision>
       <collision name="section_vegetable">
-        <pose>1.518439 1.445972 0.175 0 0 0</pose>
+        <pose>1.585925 1.445972 0.175 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.540446 0.099798 0.35</size>
+            <size>0.564466 0.099798 0.35</size>
           </box>
         </geometry>
       </collision>
       <collision name="section_beverage">
-        <pose>1.207535 0.873227 0.175 0 0 0</pose>
+        <pose>1.261203 0.873227 0.175 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.099798 0.209576 0.35</size>
+            <size>0.104233 0.209576 0.35</size>
           </box>
         </geometry>
       </collision>

@@ -76,10 +76,12 @@ class RobotCard(QFrame):
     """로봇 카드 위젯."""
 
     command_requested = pyqtSignal(str, dict)
+    card_clicked = pyqtSignal(str)  # robot_id
 
     def __init__(self, robot_id: str, parent=None):
         super().__init__(parent)
         self._robot_id = robot_id
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._current_state: dict = {}
         self._goto_pending = False  # 맵 클릭 대기 상태
         self._pending_goto_coords: tuple[float, float] | None = None
@@ -317,6 +319,10 @@ class RobotCard(QFrame):
         )
         if reply == QMessageBox.StandardButton.Yes:
             self._send_cmd({'cmd': 'init_pose', 'robot_id': self._robot_id})
+
+    def mousePressEvent(self, event):
+        self.card_clicked.emit(self._robot_id)
+        super().mousePressEvent(event)
 
     @property
     def robot_id(self) -> str:

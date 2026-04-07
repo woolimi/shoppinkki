@@ -405,6 +405,30 @@ html, body {
   animation: slide-up 0.25s ease-out;
 }
 
+.overlay-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.overlay-title-row .overlay-title {
+  margin-bottom: 0;
+}
+
+.btn-overlay-close {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 16px;
+  cursor: pointer;
+  color: var(--text-muted);
+  line-height: 1;
+  transition: all 0.1s;
+}
+.btn-overlay-close:hover { border-color: var(--danger); color: var(--danger); }
+
 .overlay-title {
   font-size: 17px;
   font-weight: 700;
@@ -644,6 +668,82 @@ html, body {
   line-height: 1.6;
   margin-bottom: 24px;
 }
+
+/* ── 수량 컨트롤 ──────────────────────────────────── */
+.qty-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.btn-qty {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text);
+  transition: all 0.1s;
+  padding: 0;
+}
+.btn-qty:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+.btn-qty:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.qty-value {
+  min-width: 22px;
+  text-align: center;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 인라인 삭제 확인 ─────────────────────────────── */
+.item-confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 0;
+  background: #fff5f5;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.item-confirm-row .confirm-msg {
+  flex: 1;
+  font-size: 13px;
+  color: var(--danger);
+}
+
+.btn-confirm-del {
+  background: var(--danger);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-confirm-del:hover { opacity: 0.85; }
+
+.btn-confirm-cancel {
+  background: none;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-confirm-cancel:hover { border-color: var(--text-muted); }
 
 /* ── 반응형 ───────────────────────────────────────── */
 @media (min-width: 481px) {
