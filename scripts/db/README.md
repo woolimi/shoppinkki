@@ -3,14 +3,13 @@
 이 프로젝트는 `docker-compose.yml`의 MySQL 컨테이너에서 아래 SQL들을 **DB 초기화 시점**에 실행합니다.
 
 - `schema.sql` → 테이블 생성
-- `seed_data.sql` → 기본 시드 데이터(ZONE/PRODUCT 등)
-- `llm_data.sql` → `PRODUCT_TEXT_EMBEDDING` 텍스트 시드(embedding은 `NULL`)
+- `seed_data.sql` → 기본 시드 데이터(ZONE/PRODUCT/PRODUCT_TEXT_EMBEDDING 등)
 
 ## 중요한 포인트: SQL을 수정해도 자동 반영되지 않습니다
 
 MySQL은 `mysql_data` 볼륨을 사용합니다. 이미 볼륨이 생성된 상태에서는
 `/docker-entrypoint-initdb.d/*.sql`이 **다시 실행되지 않기 때문에**,
-`schema.sql`/`seed_data.sql`/`llm_data.sql`을 수정해도 DB에 자동 반영되지 않습니다.
+`schema.sql`/`seed_data.sql`을 수정해도 DB에 자동 반영되지 않습니다.
 
 ### 초기화(데이터 삭제)로 다시 반영
 
@@ -23,7 +22,7 @@ docker compose up -d
 
 ```bash
 docker exec -i shoppinkki_mysql mysql -ushoppinkki -pshoppinkki shoppinkki < scripts/db/schema.sql
-docker exec -i shoppinkki_mysql mysql -ushoppinkki -pshoppinkki shoppinkki < scripts/db/llm_data.sql
+docker exec -i shoppinkki_mysql mysql -ushoppinkki -pshoppinkki shoppinkki < scripts/db/seed_data.sql
 ```
 
 ## 임베딩 채우기 스크립트
