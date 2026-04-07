@@ -1,0 +1,31 @@
+# ============================================================
+# 쑈삥끼 로봇 (Raspberry Pi 5) Python 의존성
+# ============================================================
+# 설치:
+#   pip install -r robot.requirements.txt
+#
+# PyTorch (CPU-only, ARM64):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#   ※ torch/torchvision 은 ReIDEngine용. 설치 불가 시 색상 통계 fallback 으로 동작.
+#
+# Pi 전용 하드웨어 라이브러리 (apt + pip):
+#   sudo apt install python3-rpi.gpio
+#   pip install spidev
+# ============================================================
+
+# ── State Machine ─────────────────────────────────────────
+transitions          # ShoppinkiSM (shoppinkki_core)
+
+# ── 수치 연산 ──────────────────────────────────────────────
+numpy                # doll_detector, reid_engine, iou_tracker
+
+# ── 카메라 / 영상 처리 ────────────────────────────────────
+opencv-python        # main_node 카메라 루프, doll_detector
+
+# ── LCD 텍스트 / QR 렌더링 (hw_controller) ────────────────
+Pillow               # PIL Image, ImageDraw, ImageFont
+qrcode[pil]          # IDLE 상태 QR 코드 생성
+
+# ── ReID (reid_engine) ───────────────────────────────────
+# torch/torchvision 미설치 → BGR 채널 평균+표준편차(6-float) fallback 으로 동작.
+# Pi 5 CPU 추론 레이턴시 문제로 torch 제외.
