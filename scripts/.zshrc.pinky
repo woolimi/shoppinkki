@@ -1,0 +1,151 @@
+export ZSH="$HOME/.oh-my-zsh"
+
+ZSH_THEME="robbyrussell"
+
+plugins=(git)
+
+source $ZSH/oh-my-zsh.sh
+
+export PINKY_ID=
+export ROS_DOMAIN_ID=14
+export ROS_WS="$HOME/ros_ws"
+
+alias sz="source ~/.zshrc"
+
+setopt PROMPT_SUBST
+
+ros_domain_prompt() {
+	echo "%F{208}[ID:${ROS_DOMAIN_ID}]%f "
+}
+
+jazzy() {
+  source /opt/ros/jazzy/setup.zsh
+  source /usr/share/colcon_argcomplete/hook/colcon-argcomplete.zsh
+	cd $ROS_WS
+  echo "ROS2 Jazzy activated"
+}
+
+PROMPT='$(ros_domain_prompt)%B%F{red}%n%f%b '"$PROMPT"
+
+# ROS Set : source ./install/local_setup.zsh
+rset() {
+  local target_dir="${1:-.}"
+  local setup_file="$target_dir/install/local_setup.zsh"
+  if [ -f "$setup_file" ]; then
+    source "$setup_file"
+    local abs_path=$(cd "$target_dir" && pwd)
+    echo "✅ ROS workspace sourced: $setup_file"
+  else
+    echo "❌ Error: '$setup_file' not found."
+    echo "   Usage: rset [path_to_workspace_root] (default is current folder)"
+  fi
+}
+
+# ROS Remove: rm -rf ./install ./log ./build
+rrm() {
+  if [ -d "install" ] || [ -d "log" ] || [ -d "build" ]; then
+    rm -rf "./install" "./log" "./build"
+    unset AMENT_PREFIX_PATH
+    unset CMAKE_PREFIX_PATH
+    unset COLCON_PREFIX_PATH
+    echo "🗑️  ROS workspace (build, install, log) has been deleted."
+  else
+    echo "ℹ️  Nothing to delete. (No build, install, or log directories found)"
+  fi
+}
+
+_ros_build_logic() {
+  local TARGET=$1
+  local IS_SYMLINK=$2
+  local BUILD_OPTS=("--cmake-args" "-DCMAKE_BUILD_TYPE=Release")
+
+  [ "$IS_SYMLINK" = true ] && BUILD_OPTS+=("--symlink-install")
+
+  cd "$ROS_WS" || { echo "❌ Error: Cannot find ROS_WS at $ROS_WS"; return 1; }
+
+  echo "🚀 Workspace Root: $(pwd)"
+
+  if [ -z "$TARGET" ]; then
+    echo "🔨 Building EVERYTHING in $ROS_WS..."
+    colcon build ${BUILD_OPTS[@]}
+  else
+    local TARGET_PATH="$TARGET"
+    [[ "$TARGET" != src/* ]] && TARGET_PATH="src/$TARGET"
+
+    if [ -d "$TARGET_PATH" ]; then
+      echo "📂 Target Path: $TARGET_PATH"
+      colcon build --base-paths "$TARGET_PATH" ${BUILD_OPTS[@]}
+    else
+      echo "🎯 Path not found, trying as package name: [$TARGET]"
+      colcon build --packages-select "$TARGET" ${BUILD_OPTS[@]}
+    fi
+  fi
+
+  local EXIT_CODE=$?
+
+  if [ $EXIT_CODE -eq 0 ]; then
+    echo "✅ Build Success!"
+    if [ -f "install/local_setup.zsh" ]; then
+      source "install/local_setup.zsh"
+      echo "🔄 Workspace sourced: $ROS_WS/install/local_setup.zsh"
+    else
+      echo "⚠️  Warning: install/local_setup.zsh not found."
+    fi
+  else
+    echo "❌ Build Failed."
+  fi
+}
+
+alias battery="/home/pinky/ap/check_battery.py"
+
+ccb() {
+  _ros_build_logic "$1" false
+}
+
+ccbs() {
+  _ros_build_logic "$1" true
+}
+
+jazzy
+
+if [ -z "$TMUX" ]; then
+    echo "------------------------------------------------"
+    echo " Welcome to Pinky Pro! Who is logging in? "
+    echo "------------------------------------------------"
+
+    local -a devs
+    devs=("Jisoo" "Joey" "Kangtaek" "Minsung" "Woolim")
+    PS3='Enter number [1-5]: '
+
+    select opt in "${devs[@]}"; do
+        case "$opt" in
+            "Jisoo")
+                export GIT_AUTHOR_NAME="Jisoo"; export GIT_AUTHOR_EMAIL="hallalee37@gmail.com"
+                export GIT_COMMITTER_NAME="Jisoo"; export GIT_COMMITTER_EMAIL="hallalee37@gmail.com"
+                break ;;
+            "Joey")
+                export GIT_AUTHOR_NAME="Joey"; export GIT_AUTHOR_EMAIL="jwlee8403@gmail.com"
+                export GIT_COMMITTER_NAME="Joey"; export GIT_COMMITTER_EMAIL="jwlee8403@gmail.com"
+                break ;;
+            "Kangtaek")
+                export GIT_AUTHOR_NAME="Kangtaek"; export GIT_AUTHOR_EMAIL="dlrkdxor0821@gmail.com"
+                export GIT_COMMITTER_NAME="Kangtaek"; export GIT_COMMITTER_EMAIL="dlrkdxor0821@gmail.com"
+                break ;;
+            "Minsung")
+                export GIT_AUTHOR_NAME="Minsung"; export GIT_AUTHOR_EMAIL="a20751651@gmail.com"
+                export GIT_COMMITTER_NAME="Minsung"; export GIT_COMMITTER_EMAIL="a20751651@gmail.com"
+                break ;;
+            "Woolim")
+                export GIT_AUTHOR_NAME="Woolim"; export GIT_AUTHOR_EMAIL="wooliwooli91@gmail.com"
+                export GIT_COMMITTER_NAME="Woolim"; export GIT_COMMITTER_EMAIL="wooliwooli91@gmail.com"
+                break ;;
+            *)
+                echo "Invalid option '$REPLY'. Please choose a number from the list."
+                ;;
+        esac
+    done
+
+    echo "------------------------------------------------"
+    echo "Identity set to: $GIT_AUTHOR_NAME"
+    echo "------------------------------------------------"
+fi
