@@ -32,11 +32,17 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
     tmux kill-session -t "$SESSION"
 fi
 # tmux kill-session 후에도 살아남는 Gazebo/Nav2 프로세스 강제 종료
-pkill -f "gz sim" 2>/dev/null || true
-pkill -f "gz_sim" 2>/dev/null || true
+pkill -f "gz sim"              2>/dev/null || true
+pkill -f "gz_sim"              2>/dev/null || true
 pkill -f "robot_state_publisher" 2>/dev/null || true
-pkill -f "nav2" 2>/dev/null || true
-sleep 1
+pkill -f "nav2"                2>/dev/null || true
+pkill -f "shoppinkki_core"     2>/dev/null || true
+# SIGKILL로 끝까지 살아남는 프로세스 처리 (SIGTERM 무시하는 Gazebo 대비)
+sleep 2
+pkill -9 -f "gz sim"           2>/dev/null || true
+pkill -9 -f "gz_sim"           2>/dev/null || true
+# 완전히 종료될 때까지 대기
+sleep 2
 
 echo "[run_sim] tmux 세션 '$SESSION' 생성 중..."
 tmux set-option -g mouse on 2>/dev/null || true

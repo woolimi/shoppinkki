@@ -43,8 +43,8 @@ amcl:
     scan_topic: /robot_18/scan
     set_initial_pose: true
     initial_pose:
-      x: 0.023
-      y: -0.042
+      x: -0.056
+      y: -0.606
       yaw: 0.0
 
 bt_navigator:
@@ -137,8 +137,8 @@ local_costmap:
       plugins: ["voxel_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 150.0
-        inflation_radius: 0.1
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.05
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: True
@@ -191,10 +191,11 @@ global_costmap:
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: True
+        map_topic: /robot_18/map
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 150.0
-        inflation_radius: 0.1
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.05
       always_send_full_costmap: True
 
 map_saver:
