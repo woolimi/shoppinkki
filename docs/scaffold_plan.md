@@ -86,13 +86,12 @@ shoppinkki_core/
 ├── setup.py
 ├── setup.cfg
 ├── resource/shoppinkki_core
-├── config/
-│   └── config.py                 ← 전역 상수 (BATTERY_THRESHOLD, ROBOT_TIMEOUT_SEC,
-│                                    N_MISS_FRAMES, SEARCH_TIMEOUT, WAITING_TIMEOUT,
-│                                    TARGET_AREA, KP_ANGLE, KP_DIST, LINEAR_X_MAX,
-│                                    ANGULAR_Z_MAX, MIN_DIST, IMAGE_WIDTH)
 ├── shoppinkki_core/
 │   ├── __init__.py
+│   ├── config.py                 ← 전역 상수 (BATTERY_THRESHOLD, ROBOT_TIMEOUT_SEC,
+│   │                                N_MISS_FRAMES, SEARCH_TIMEOUT, WAITING_TIMEOUT,
+│   │                                TARGET_AREA, KP_ANGLE, KP_DIST, LINEAR_X_MAX,
+│   │                                ANGULAR_Z_MAX, MIN_DIST, IMAGE_WIDTH)
 │   ├── main_node.py              ← ROS2 Node 진입점. 각 모듈을 조합하여 spin()
 │   ├── state_machine.py          ← ShoppinkiSM (transitions 라이브러리)
 │   │                                - 10개 상태 정의
@@ -136,14 +135,15 @@ shoppinkki_nav/
 ├── setup.cfg
 ├── resource/shoppinkki_nav
 ├── config/
-│   ├── nav2_params.yaml          ← Nav2 AMCL, planner, controller 파라미터
-│   ├── keepout_mask.yaml         ← Keepout Filter 마스크 설정
-│   └── lifecycle_manager.yaml    ← lifecycle_manager_filter 설정 (autostart=false)
-├── maps/
-│   ├── shop.pgm                  ← 사전 제작 맵 이미지
-│   └── shop.yaml                 ← 맵 메타데이터 (resolution, origin)
+│   ├── nav2_params.yaml          ← Nav2 AMCL, planner, controller 파라미터 (공통)
+│   ├── nav2_params_robot_54.yaml ← 로봇 54 전용 Nav2 파라미터
+│   ├── nav2_params_robot_18.yaml ← 로봇 18 전용 Nav2 파라미터
+│   ├── bridge_robot_54.yaml      ← ros_gz_bridge 토픽 매핑 (로봇 54)
+│   ├── bridge_robot_18.yaml      ← ros_gz_bridge 토픽 매핑 (로봇 18)
+│   └── keepout_mask.yaml         ← Keepout Filter 마스크 설정
 ├── launch/
-│   └── navigation.launch.py      ← Nav2 스택 + BoundaryMonitor 노드 통합 실행
+│   ├── navigation.launch.py      ← Nav2 스택 + BoundaryMonitor 노드 통합 실행
+│   └── gz_multi_robot.launch.py  ← Gazebo 멀티로봇 시뮬레이션 실행
 ├── shoppinkki_nav/
 │   ├── __init__.py
 │   ├── bt_tracking.py            ← BT1: P-Control 추종 + RPLiDAR 장애물 회피 (Parallel)
@@ -188,6 +188,10 @@ shoppinkki_perception/
 │   │                                - run(frame): TRACKING 단계 매칭 → 버퍼 저장
 │   │                                - get_latest() → Optional[Detection]
 │   │                                - is_ready() → bool
+│   ├── reid_engine.py            ← ReID 특징 벡터 추출 엔진
+│   │                                - 임베딩 생성 + 코사인 유사도 매칭
+│   ├── iou_tracker.py            ← bbox IoU 기반 프레임 간 추적기
+│   │                                - 연속 프레임 bbox 연결 (ID 유지)
 │   └── qr_scanner.py             ← QRScannerInterface 구현체
 │                                    - OpenCV QRCodeDetector 기반
 │                                    - start(on_scanned, on_timeout)
@@ -307,6 +311,8 @@ admin_ui/
 │   │                                - QLabel에 프레임 표시 (QPixmap)
 │   │                                - status bbox 필드로 바운딩박스 QPainter 오버레이
 │   │                                - 로봇 선택 드롭다운, [닫기] 버튼
+│   ├── robot_detail_dialog.py    ← RobotDetailDialog (QDialog)
+│   │                                - 로봇 상세 정보 팝업
 │   ├── staff_panel.py            ← StaffCallPanel (QListWidget 기반)
 │   │                                - LOCKED/HALTED 이벤트 항목 추가
 │   │                                - [잠금 해제]/[초기화] → staff_resolved 전송
@@ -316,6 +322,7 @@ admin_ui/
 │                                    - 필터 버튼 [전체]/[스태프호출]/[세션]/[이벤트]
 │                                    - 최대 200건. 행 클릭 → 로봇 카드 하이라이트
 └── test/
+    └── test_admin_ui.py
 ```
 
 **핵심 파일:**
@@ -448,18 +455,21 @@ customer_web/
 │                                    - query(name: str) → zone_id, zone_name
 ├── templates/
 │   ├── login.html                ← 로그인 화면 (UR-02)
+│   ├── register.html             ← 회원가입 화면
 │   ├── blocked.html              ← 중복 사용 차단 화면 (UR-05)
+│   ├── error.html                ← 오류 화면
 │   └── main.html                 ← 단일 페이지 메인 (3-A~3-J 전체 패널)
 ├── static/
 │   ├── js/
 │   │   ├── socket.js             ← SocketIO 연결 + 이벤트 핸들러
 │   │   ├── map.js                ← 맵 오버레이 Canvas 렌더링 (좌표 변환, 마커)
 │   │   └── cart.js               ← 장바구니 UI 갱신 (is_paid ✓ 표시)
-│   ├── css/
-│   │   └── style.css
-│   └── map/
-│       ├── shop.pgm              ← 맵 이미지 (Canvas 배경)
-│       └── shop.yaml             ← resolution, origin (JS 좌표 변환용)
+│   └── css/
+│       └── style.css
+├── tests/
+│   ├── conftest.py               ← ControlClient TCP mock, _ctrl_rest mock
+│   ├── test_auth_flow.py         ← 인증 플로우 테스트 (22케이스)
+│   └── test_cart_feature.py      ← 장바구니 기능 테스트
 └── requirements.txt              ← flask, flask-socketio, ...
 ```
 
@@ -498,94 +508,25 @@ ai_server/
 
 ```
 scripts/
-├── run_server.sh                 ← tmux 통합 실행기
-│                                    - pane 1: control_service (ros2 run)
-│                                    - pane 2: customer_web (python app.py)
-│                                    - pane 3: ai_server (docker compose up)
-├── run_admin.sh                  ← admin_ui 단독 실행 (ros2 run admin_ui admin_ui)
-├── run_customer_web.sh           ← customer_web 단독 실행
-├── run_ai.sh                     ← ai_server Docker 단독 실행
+├── run_server.sh                 ← [노트북] control_service + customer_web + AI Docker tmux 세션
+├── run_ui.sh                     ← [노트북] admin_ui + customer_web tmux 세션
+├── run_sim.sh                    ← [노트북] Gazebo + Nav2 x2 + shoppinkki_core x2 tmux 세션
+├── run_robot.sh                  ← [Pi 5] 로봇 단독 실행 (인수: 54 또는 18)
+├── run_ai.sh                     ← [노트북] ai_server Docker 단독 실행
 ├── seed.sh                       ← DB 시딩 대화형 스크립트 (reset / replace / 기본)
+├── generate_product_qr.py        ← 상품 QR 코드 이미지 생성 스크립트
+├── _ros_env.sh                   ← ROS 환경변수 공통 설정 (source 용)
+├── .zshrc.pinky                  ← Pi 5 전용 zshrc 설정
+├── index.md                      ← 스크립트 사용법 및 tmux 세션 구성 상세
+├── qr_codes/                     ← 생성된 QR 코드 PNG 이미지들
 └── db/
     ├── schema.sql                ← 전체 DDL (CREATE TABLE IF NOT EXISTS)
     │                                USER, CARD, ZONE, PRODUCT, BOUNDARY_CONFIG,
     │                                ROBOT, STAFF_CALL_LOG, EVENT_LOG,
     │                                SESSION, CART, CART_ITEM
-    └── seed_data.sql             ← 기본 데이터 (ZONE, PRODUCT, BOUNDARY_CONFIG,
-                                     ROBOT #54/#18, USER test01/test02, CARD)
+    ├── seed_data.sql             ← 기본 데이터 (ZONE, PRODUCT, BOUNDARY_CONFIG,
+    │                                ROBOT #54/#18, USER test01/test02, CARD)
+    ├── fill_product_embeddings.py ← 상품 임베딩 벡터 DB 삽입 스크립트
+    └── README.md
 ```
 
----
-
-## 파일별 구현 담당 시나리오 매핑
-
-| 파일 | 담당 시나리오 |
-|---|---|
-| `state_machine.py` | 모든 SM 상태 전환 (SC-01~SC-82 전체) |
-| `cmd_handler.py` | 채널 G cmd 수신 (SC-01, SC-20, SC-50, SC-60~63, SC-70~71, SC-80) |
-| `bt_tracking.py` | SC-10, SC-11, SC-51 |
-| `bt_searching.py` | SC-10, SC-11 |
-| `bt_waiting.py` | SC-20~23 |
-| `bt_guiding.py` | SC-30, SC-31 |
-| `bt_returning.py` | SC-60~63 |
-| `boundary_monitor.py` | SC-40, SC-41, SC-50, SC-51, SC-52 |
-| `control_service/robot_manager.py` | SC-82 (OFFLINE 감지), SC-80 (force_terminate), SC-81 (admin_goto) |
-| `control_service/tcp_server.py` | SC-80~82 (채널 B 명령) |
-| `admin_ui/robot_card.py` | SC-80, SC-81 (관제 버튼) |
-| `admin_ui/staff_panel.py` | SC-70~71, SC-62~63 (스태프 처리) |
-| `admin_ui/camera_panel.py` | 디버그 전용 (시나리오 외) |
-| `customer_web/control_client.py` + `rest_api.py` | SC-02 (로그인 → 세션 생성) |
-| `customer_web/app.py` + `blocked.html` | SC-03 (중복 로그인 차단 화면) |
-| `control_service/tcp_server.py` | SC-04 (동일 로봇 중복 세션 거부) |
-| `customer_web/socket_handlers.py` | SC-01~SC-52 전체 고객 앱 흐름 |
-| `yolo/yolo_server.py` | SC-01, SC-10, SC-11 (인형 감지) |
-| `shoppinkki_rmf/robot_command_handle.py` | SC-30, SC-31, SC-60~63 (GUIDING·RETURNING 다중 로봇 경로 충돌 방지) |
-| `shoppinkki_rmf/task_dispatcher.py` | SC-30, SC-60~63 (navigate_to → RMF Task 래핑) |
-
----
-
-## 구현 순서 (의존성 기반)
-
-```
-1단계 — 인터페이스 / DB
-  shoppinkki_interfaces  (protocols.py, mocks.py)
-  scripts/db/schema.sql + seed_data.sql
-
-2단계 — 데이터 레이어
-  control_service/db.py
-  control_service/robot_manager.py (캐시만, 실제 ROS 없이)
-
-3단계 — Pi 코어 (SM + HW)
-  shoppinkki_core/state_machine.py    ← mocks 사용하여 단위 테스트 가능
-  shoppinkki_core/hw_controller.py
-  shoppinkki_core/cmd_handler.py
-
-4단계 — Pi 주행 (BT + BoundaryMonitor)
-  shoppinkki_perception/doll_detector.py
-  shoppinkki_perception/qr_scanner.py
-  shoppinkki_nav/boundary_monitor.py
-  shoppinkki_nav/bt_*.py              ← BT1~BT5 순서대로
-  shoppinkki_core/bt_runner.py        ← BT 연결 후 통합
-
-5단계 — 서버 채널 (TCP + REST)
-  control_service/tcp_server.py
-  control_service/ros_node.py
-  control_service/rest_api.py
-  control_service/camera_stream.py
-
-6단계 — UI
-  services/customer_web/             ← 채널 A + C
-  src/control_center/admin_ui/       ← 채널 B
-
-7단계 — AI
-  services/ai_server/yolo/           ← 채널 F
-  services/ai_server/llm/            ← 채널 D
-
-8단계 — Open-RMF (다중 로봇 경로 최적화)
-  maps/shop.building.yaml            ← traffic_editor로 레인/웨이포인트 작성 (선행)
-  shoppinkki_rmf/status_bridge.py    ← /robot_<id>/status → RMF pose 브리지
-  shoppinkki_rmf/robot_command_handle.py  ← RMF 명령 → control_service 변환
-  shoppinkki_rmf/task_dispatcher.py  ← navigate_to / dock RMF Task 래핑
-  shoppinkki_rmf/fleet_adapter.py    ← 두 로봇 핸들 등록 + spin
-  launch/rmf_fleet.launch.py         ← RMF core + FleetAdapter 통합 실행
-```
