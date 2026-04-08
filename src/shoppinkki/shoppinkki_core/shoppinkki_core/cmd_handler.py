@@ -10,6 +10,7 @@ Supported commands (채널 G):
     force_terminate       → sm.handle_force_terminate()
     staff_resolved        → sm.handle_staff_resolved()
     admin_goto            → on_admin_goto callback (IDLE only)
+    enter_registration    → on_enter_registration callback (IDLE only, LCD 카메라 피드 전환)
     enter_simulation      → on_enter_simulation callback (IDLE only, 시뮬레이션 모드)
     registration_confirm  → on_registration_confirm callback (IDLE only, 인형 등록 확인)
 """
@@ -43,6 +44,9 @@ class CmdHandler:
     has_unpaid_items:
         Callable() → bool; consulted for mode=RETURNING to decide
         LOCKED vs RETURNING transition.
+    on_enter_registration:
+        Called (no args) when enter_registration cmd is received in IDLE.
+        /register 페이지 접속 시 호출 — LCD 카메라 피드 전환.
     on_enter_simulation:
         Called (no args) when enter_simulation cmd is received in IDLE.
         시뮬레이션 모드: IDLE → TRACKING 전환 + 추종 비활성화.
@@ -59,6 +63,7 @@ class CmdHandler:
         on_admin_goto: Optional[Callable[[float, float, float], None]] = None,
         on_start_session: Optional[Callable[[str], None]] = None,
         has_unpaid_items: Optional[Callable[[], bool]] = None,
+        on_enter_registration: Optional[Callable[[], None]] = None,
         on_enter_simulation: Optional[Callable[[], None]] = None,
         on_registration_confirm: Optional[Callable[[dict], None]] = None,
     ) -> None:
@@ -68,6 +73,7 @@ class CmdHandler:
         self._on_admin_goto = on_admin_goto
         self._on_start_session = on_start_session
         self._has_unpaid_items = has_unpaid_items
+        self._on_enter_registration = on_enter_registration
         self._on_enter_simulation = on_enter_simulation
         self._on_registration_confirm = on_registration_confirm
 
@@ -205,6 +211,20 @@ class CmdHandler:
         if self._on_registration_confirm:
             self._on_registration_confirm(bbox)
 
+    def _handle_enter_registration(self, payload: dict) -> None:
+        """등록 시작 (IDLE 상태에서만 유효).
+
+        /register 페이지 접속 시 호출 — _registration_active 플래그를 세워
+        카메라 루프가 LCD에 카메라 피드를 표시하도록 한다.
+        """
+        if self.sm.state != 'IDLE':
+            logger.warning('enter_registration ignored in state=%s (IDLE 상태에서만 가능)',
+                           self.sm.state)
+            return
+        logger.info('enter_registration: LCD 카메라 피드 전환')
+        if self._on_enter_registration:
+            self._on_enter_registration()
+
     def _handle_enter_simulation(self, payload: dict) -> None:
         """시뮬레이션 모드: IDLE → TRACKING + 추종 비활성화.
 
@@ -233,6 +253,7 @@ class CmdHandler:
         'force_terminate':       _handle_force_terminate,
         'staff_resolved':        _handle_staff_resolved,
         'admin_goto':            _handle_admin_goto,
+        'enter_registration':    _handle_enter_registration,
         'enter_simulation':      _handle_enter_simulation,
         'registration_confirm':  _handle_registration_confirm,
     }

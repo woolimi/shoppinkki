@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#4f46e5">
+  <title>ShopPinkki — 인형 등록</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script>
+    window.ROBOT_ID = "{{ robot_id }}";
+  </script>
+</head>
+<body>
+<div class="app-container">
+
+  <!-- 상단 바 -->
+  <header class="top-bar">
+    <span class="robot-label">🤖 #{{ robot_id }}</span>
+    <span id="mode-badge" class="badge badge-IDLE">등록 대기</span>
+    <span id="battery-level" class="battery">🔋--%</span>
+  </header>
+
+  <!-- 감지 대기 패널 -->
+  <div id="panel-waiting" class="panel active">
+    <div class="card">
+      <div class="spinner-wrap">
+        <span style="font-size: 40px;">📷</span>
+        <p style="font-weight: 600; font-size: 16px;">모습을 카메라에 보여주세요</p>
+        <div class="spinner"></div>
+        <p style="font-size: 13px; color: var(--text-muted);">감지 중...</p>
+      </div>
+      <div style="margin-top: 20px; padding-top: 16px; border-top: 1px dashed var(--border);">
+        <button
+          id="btn-simulation"
+          class="btn btn-outline btn-full"
+          style="font-size: 13px; opacity: 0.75;"
+          onclick="doSimulation(this)"
+        >시뮬레이션 모드</button>
+        <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px; text-align: center;">
+          추종 없이 쇼핑 기능만 사용합니다
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 스냅샷 확인 패널 -->
+  <div id="panel-confirm" class="panel" style="display:none;">
+    <div class="card">
+      <p style="font-weight: 600; font-size: 16px; text-align: center; margin-bottom: 12px;">
+        이 사람이 당신이 맞나요?
+      </p>
+      <div style="text-align: center; margin-bottom: 16px;">
+        <img id="snapshot-img"
+             src=""
+             alt="감지된 인형"
+             style="max-width: 100%; max-height: 240px; border-radius: 10px;
+                    border: 2px solid var(--border); object-fit: contain;" />
+      </div>
+      <input type="hidden" id="pending-bbox" value="{}" />
+      <div class="btn-group" style="margin-top: 8px;">
+        <button class="btn btn-primary" onclick="confirmRegistration()">✅ 맞아요</button>
+        <button class="btn btn-outline" onclick="retakeRegistration()">🔄 다시 찍기</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js" crossorigin="anonymous"></script>
+<script>
+  "use strict";
+
+  const socket = io();
+
+  // 연결 즉시 enter_registration 전송 → Pi LCD 카메라 피드 전환
+  socket.on("connect", () => {
+    socket.emit("enter_registration", {});
+  });
+
+  // status: 배터리 표시, IDLE 이외 상태면 /main으로 이동 (이미 등록됨)
+  socket.on("status", (data) => {
+    const mode = (data.my_robot && data.my_robot.mode) || data.mode;
+    if (mode && mode !== "IDLE") {
+      window.location.href = "/main?robot_id=" + window.ROBOT_ID;
+      return;
+    }
+    const batt = (data.my_robot && data.my_robot.battery) || data.battery || "--";
+    const battEl = document.getElementById("battery-level");
+    if (battEl) battEl.textContent = "🔋" + batt + "%";
+  });
+
+  // 인형 감지 → 스냅샷 확인 패널로 전환
+  socket.on("doll_detected", (data) => {
+    if (!data || !data.image) return;
+    document.getElementById("snapshot-img").src = "data:image/jpeg;base64," + data.image;
+    document.getElementById("pending-bbox").value = JSON.stringify(data.bbox || {});
+    document.getElementById("panel-waiting").style.display = "none";
+    document.getElementById("panel-confirm").style.display = "";
+  });
+
+  // 등록 완료 or 시뮬레이션 모드 → /main으로 이동
+  socket.on("registration_done", () => {
+    window.location.href = "/main?robot_id=" + window.ROBOT_ID;
+  });
+
+  // 직원 처리 완료 (세션 종료) → 로그인으로
+  socket.on("staff_resolved", () => {
+    fetch("/logout", { method: "POST" }).finally(() => {
+      window.location.href = "/login?robot_id=" + window.ROBOT_ID;
+    });
+  });
+
+  // [맞아요] 클릭
+  function confirmRegistration() {
+    var bbox = {};
+    try { bbox = JSON.parse(document.getElementById("pending-bbox").value || "{}"); } catch (e) {}
+    socket.emit("registration_confirm", { bbox: bbox });
+    document.querySelectorAll("#panel-confirm .btn").forEach(function (b) { b.disabled = true; });
+  }
+
+  // [다시 찍기] 클릭
+  function retakeRegistration() {
+    document.getElementById("pending-bbox").value = "{}";
+    document.getElementById("panel-confirm").style.display = "none";
+    document.getElementById("panel-waiting").style.display = "";
+  }
+
+  // [시뮬레이션 모드] 클릭
+  function doSimulation(btn) {
+    socket.emit("enter_simulation", {});
+    btn.disabled = true;
+    btn.textContent = "전환 중...";
+  }
+</script>
+</body>
+</html>

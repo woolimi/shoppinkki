@@ -114,6 +114,7 @@ class ShoppinkiMainNode(Node):
             on_admin_goto=self._on_admin_goto,
             on_start_session=self._on_start_session,
             has_unpaid_items=self._has_unpaid_items,
+            on_enter_registration=self._on_enter_registration,
             on_enter_simulation=self._on_enter_simulation,
             on_registration_confirm=self._on_registration_confirm,
         )
@@ -182,6 +183,8 @@ class ShoppinkiMainNode(Node):
         self._cam_frame = None              # 최신 카메라 프레임 (numpy BGR)
         self._last_snapshot_time: float = 0.0  # 스냅샷 rate-limit (2초)
         self._snapshot_rate_limit: float = 2.0
+        # 고객이 /register 페이지에 접속했을 때 True → LCD 카메라 피드 표시
+        self._registration_active: bool = False
 
         # ── 카메라 스레드 ─────────────────────
         self._cam_thread = threading.Thread(
@@ -275,6 +278,7 @@ class ShoppinkiMainNode(Node):
         self._cart_items = []
         self.follow_disabled = False
         self.bt_runner.follow_disabled = False
+        self._registration_active = False
         # 추종 데이터 소거 (gallery, safe_id, verification_buffer)
         if self.doll_detector is not None:
             self.doll_detector.reset()
@@ -297,6 +301,11 @@ class ShoppinkiMainNode(Node):
     def _on_delete_item(self, item_id: int) -> None:
         self.get_logger().info('delete_item: id=%d', item_id)
         self._cart_items = [i for i in self._cart_items if i.get('id') != item_id]
+
+    def _on_enter_registration(self) -> None:
+        """고객이 /register 페이지에 접속: LCD 카메라 피드 전환."""
+        self._registration_active = True
+        self.get_logger().info('enter_registration: 카메라 피드 활성화')
 
     def _on_enter_simulation(self) -> None:
         """시뮬레이션 모드 진입: IDLE → TRACKING 전환 + 추종 비활성화."""
@@ -383,12 +392,12 @@ class ShoppinkiMainNode(Node):
 
             self._cam_frame = frame
 
-            if state == 'IDLE' and self.doll_detector is not None:
-                # LCD에 카메라 피드 표시
+            if state == 'IDLE' and self._registration_active:
+                # 고객이 /register 접속 중 — LCD 카메라 피드 표시
                 self.hw.display_frame(frame)
-
                 # 인형 감지 → pending_snapshot 갱신
-                self.doll_detector.register(frame)
+                if self.doll_detector is not None:
+                    self.doll_detector.register(frame)
 
                 # rate-limit: 2초마다 snapshot 발행
                 snapshot = self.doll_detector.get_pending_snapshot()
@@ -432,6 +441,7 @@ class ShoppinkiMainNode(Node):
 
         self.doll_detector.confirm_registration(frame, bbox)
         self.get_logger().info('registration_confirm: 등록 완료 → TRACKING 진입')
+        self._registration_active = False
         self.sm.enter_tracking()
 
 

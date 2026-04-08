@@ -30,59 +30,6 @@
   </header>
 
   <!-- ─────────────────────────────────────────────────────────────
-       3-B-1. 인형 등록 패널 — 감지 대기 (mode=IDLE, 기본)
-  ───────────────────────────────────────────────────────────── -->
-  <div id="panel-idle" class="panel">
-    <div class="card">
-      <div class="spinner-wrap">
-        <span style="font-size: 40px;">📷</span>
-        <p style="font-weight: 600; font-size: 16px;">인형을 카메라에 보여주세요</p>
-        <div class="spinner"></div>
-        <p style="font-size: 13px; color: var(--text-muted);">감지 중...</p>
-      </div>
-      <div style="margin-top: 20px; padding-top: 16px; border-top: 1px dashed var(--border);">
-        <button
-          class="btn btn-outline btn-full"
-          style="font-size: 13px; opacity: 0.75;"
-          onclick="socket.emit('enter_simulation', {}); this.disabled=true; this.textContent='전환 중...';"
-        >시뮬레이션 모드</button>
-        <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px; text-align: center;">
-          추종 없이 쇼핑 기능만 사용합니다
-        </p>
-      </div>
-    </div>
-  </div>
-
-  <!-- ─────────────────────────────────────────────────────────────
-       3-B-2. 인형 등록 패널 — 사용자 확인 (doll_detected 수신 시)
-  ───────────────────────────────────────────────────────────── -->
-  <div id="panel-idle-confirm" class="panel" style="display:none;">
-    <div class="card">
-      <p style="font-weight: 600; font-size: 16px; text-align: center; margin-bottom: 12px;">
-        이 사람이 당신이 맞나요?
-      </p>
-      <div style="text-align: center; margin-bottom: 16px;">
-        <img id="snapshot-img"
-             src=""
-             alt="감지된 인형"
-             style="max-width: 100%; max-height: 240px; border-radius: 10px;
-                    border: 2px solid var(--border); object-fit: contain;" />
-      </div>
-      <!-- hidden: bbox 데이터 임시 보관 -->
-      <input type="hidden" id="pending-bbox" value="{}" />
-
-      <div class="btn-group" style="margin-top: 8px;">
-        <button class="btn btn-primary" onclick="confirmRegistration()">
-          ✅ 맞아요
-        </button>
-        <button class="btn btn-outline" onclick="retakeRegistration()">
-          🔄 다시 찍기
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ─────────────────────────────────────────────────────────────
        3-C. 메인 쇼핑 패널 (mode=TRACKING / TRACKING_CHECKOUT / WAITING)
   ───────────────────────────────────────────────────────────── -->
   <div id="panel-shopping" class="panel">
@@ -305,48 +252,6 @@
 <script>
   // 맵 초기화
   MapRenderer.init("mapCanvas", "{{ robot_id }}");
-</script>
-<script>
-  // ── 인형 등록 확인 UI ──────────────────────────────────────────
-
-  // 대기 패널 ↔ 확인 패널 전환
-  function _showIdlePanel(panelId) {
-    document.getElementById('panel-idle').style.display =
-      panelId === 'panel-idle' ? '' : 'none';
-    document.getElementById('panel-idle-confirm').style.display =
-      panelId === 'panel-idle-confirm' ? '' : 'none';
-  }
-
-  // doll_detected: 감지된 인형 이미지 표시 → 사용자 확인 요청
-  socket.on('doll_detected', function(data) {
-    if (!data || !data.image) return;
-    // 이미지 설정
-    document.getElementById('snapshot-img').src =
-      'data:image/jpeg;base64,' + data.image;
-    // bbox 임시 보관
-    document.getElementById('pending-bbox').value =
-      JSON.stringify(data.bbox || {});
-    // 확인 패널로 전환
-    _showIdlePanel('panel-idle-confirm');
-  });
-
-  // [맞아요] 클릭
-  function confirmRegistration() {
-    var bboxRaw = document.getElementById('pending-bbox').value || '{}';
-    var bbox = {};
-    try { bbox = JSON.parse(bboxRaw); } catch(e) {}
-    socket.emit('registration_confirm', { bbox: bbox });
-    // 버튼 비활성화 (중복 전송 방지)
-    document.querySelectorAll('#panel-idle-confirm .btn').forEach(function(b) {
-      b.disabled = true;
-    });
-  }
-
-  // [다시 찍기] 클릭
-  function retakeRegistration() {
-    document.getElementById('pending-bbox').value = '{}';
-    _showIdlePanel('panel-idle');
-  }
 </script>
 </body>
 </html>

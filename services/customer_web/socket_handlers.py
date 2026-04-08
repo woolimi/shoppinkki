@@ -140,6 +140,16 @@ def register_handlers(socketio, control_clients: dict, llm_cfg: dict):
                 "bbox": data.get("bbox", {}),
             })
 
+    # ── 인형 등록 시작 ────────────────────────────────────────────
+
+    @socketio.on("enter_registration")
+    def on_enter_registration(data=None):
+        """/register 페이지 접속 시 자동 emit → Pi LCD 카메라 피드 전환."""
+        robot_id, cc = _get_client()
+        if cc:
+            logger.info("enter_registration 요청 (robot_id=%s)", robot_id)
+            cc.send({"cmd": "enter_registration", "robot_id": robot_id})
+
     # ── 시뮬레이션 모드 ───────────────────────────────────────────
 
     @socketio.on("enter_simulation")

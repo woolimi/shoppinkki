@@ -93,11 +93,11 @@ class TestLoginPost:
         assert resp.status_code == 302
         assert "/login" in resp.headers["Location"]
 
-    def test_success_sets_session_and_redirects_to_main(self, client, mock_ctrl_rest):
+    def test_success_sets_session_and_redirects_to_register(self, client, mock_ctrl_rest):
         mock_ctrl_rest.return_value = {"session_id": 42, "cart_id": 7}
         resp = client.post(self.URL, data=self.FORM)
         assert resp.status_code == 302
-        assert "/main" in resp.headers["Location"]
+        assert "/register" in resp.headers["Location"]
         with client.session_transaction() as sess:
             assert sess["session_id"] == 42
             assert sess["robot_id"] == "54"

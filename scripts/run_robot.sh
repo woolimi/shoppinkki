@@ -9,15 +9,19 @@
 #   [Pi 5 ] bash scripts/run_robot.sh          ← 이 스크립트
 #
 # 환경 변수:
-#   ROBOT_ID   로봇 번호 (기본 54, 인자로도 지정 가능)
+#   ROBOT_ID          로봇 번호 (기본 54, 인자로도 지정 가능)
+#   CUSTOMER_WEB_HOST 노트북(웹서버) private IP — LCD QR 코드 URL에 사용
+#                     (기본값: 192.168.102.100)
 #
 # 사용법:
 #   ./scripts/run_robot.sh        # ROBOT_ID=54
 #   ./scripts/run_robot.sh 18     # ROBOT_ID=18
+#   CUSTOMER_WEB_HOST=192.168.1.50 ./scripts/run_robot.sh 54
 
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROS_WS="$(dirname "$SCRIPTS_DIR")"
 ROBOT_ID="${1:-${PINKY_ID:-54}}"
+CUSTOMER_WEB_HOST="${CUSTOMER_WEB_HOST:-192.168.102.100}"
 SESSION="sp_robot"
 
 source "$SCRIPTS_DIR/_ros_env.sh"
@@ -56,7 +60,7 @@ tmux send-keys -t "${SESSION}:nav" \
 # Nav2 초기화 대기 후 실행 (30초)
 tmux new-window -t "${SESSION}" -n "core"
 tmux send-keys -t "${SESSION}:core" \
-    "$TMUX_SRC && $ROS_ENV && export ROBOT_ID=$ROBOT_ID && sleep 30 && ros2 run shoppinkki_core main_node" Enter
+    "$TMUX_SRC && $ROS_ENV && export ROBOT_ID=$ROBOT_ID && export CUSTOMER_WEB_HOST=$CUSTOMER_WEB_HOST && sleep 30 && ros2 run shoppinkki_core main_node" Enter
 
 # 창 3: 디버깅 셸
 tmux new-window -t "${SESSION}" -n "shell"
@@ -68,7 +72,8 @@ tmux select-window -t "${SESSION}:bringup"
 # ── 안내 ───────────────────────────────────────────────────────────────────────
 echo ""
 echo "┌──────────────────────────────────────────────────────────────┐"
-echo "│         쑈삥끼 실물 로봇 기동 (ROBOT_ID=$ROBOT_ID)            │"
+echo "│  쑈삥끼 실물 로봇 기동 (ROBOT_ID=$ROBOT_ID)                  │"
+echo "│  웹서버 IP: $CUSTOMER_WEB_HOST (LCD QR)                     │"
 echo "├──────────────────────────────────────────────────────────────┤"
 echo "│  0. bringup — 모터/IMU/TF (즉시 시작)                       │"
 echo "│  1. nav     — Nav2 + AMCL (10초 후 자동 시작)               │"

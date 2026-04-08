@@ -197,6 +197,11 @@ def index():
         # 세션 활성 여부 확인
         data = _ctrl_rest("GET", f"/session/{session_id}")
         if data and data.get("is_active"):
+            # SM 상태에 따라 /register 또는 /main으로
+            robots = _ctrl_rest("GET", "/robots")
+            mode = (robots or {}).get(str(robot_id), {}).get("mode") if robots else None
+            if mode == "IDLE":
+                return redirect(url_for("register", robot_id=robot_id))
             return redirect(url_for("main", robot_id=robot_id))
         # 만료된 세션 초기화
         session.clear()
@@ -246,7 +251,7 @@ def login():
                 session["robot_id"] = robot_id
                 session["user_id"] = user_id
                 session["session_id"] = data.get("session_id")
-                return redirect(url_for("main", robot_id=robot_id))
+                return redirect(url_for("register", robot_id=robot_id))
 
         # 실패 시 GET /login?robot_id=... 으로 리다이렉트 (PRG 패턴)
         return redirect(url_for("login", robot_id=robot_id))
@@ -257,6 +262,27 @@ def login():
     messages = get_flashed_messages()
     error = messages[0] if messages else None
     return render_template("login.html", robot_id=robot_id, error=error)
+
+
+@app.route("/register")
+def register():
+    if "session_id" not in session:
+        robot_id = request.args.get("robot_id", "").strip()
+        return redirect(url_for("login", robot_id=robot_id) if robot_id else url_for("login"))
+    robot_id = session.get("robot_id", "").strip()
+    if not robot_id or robot_id not in KNOWN_ROBOT_IDS:
+        session.clear()
+        return redirect(url_for("login"))
+    requested_robot_id = request.args.get("robot_id", "").strip()
+    if requested_robot_id and requested_robot_id != robot_id:
+        return redirect(url_for("login", robot_id=robot_id))
+    # SM 상태가 IDLE이 아니면 이미 등록됨 → /main으로
+    robots = _ctrl_rest("GET", "/robots")
+    if robots:
+        mode = robots.get(str(robot_id), {}).get("mode")
+        if mode and mode != "IDLE":
+            return redirect(url_for("main", robot_id=robot_id))
+    return render_template("register.html", robot_id=robot_id)
 
 
 @app.route("/main")
@@ -272,6 +298,12 @@ def main():
     requested_robot_id = request.args.get("robot_id", "").strip()
     if requested_robot_id and requested_robot_id != robot_id:
         return redirect(url_for("login", robot_id=robot_id))
+    # SM 상태가 IDLE이면 /register로 (아직 등록 전)
+    robots = _ctrl_rest("GET", "/robots")
+    if robots:
+        mode = robots.get(str(robot_id), {}).get("mode")
+        if mode == "IDLE":
+            return redirect(url_for("register", robot_id=robot_id))
     return render_template(
         "main.html",
         robot_id=robot_id,
@@ -302,10 +334,19 @@ def logout():
 # ── 진입점 ────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    import socket as _sock
+    try:
+        _s = _sock.socket(_sock.AF_INET, _sock.SOCK_DGRAM)
+        _s.connect(('8.8.8.8', 80))
+        _private_ip = _s.getsockname()[0]
+        _s.close()
+    except Exception:
+        _private_ip = '127.0.0.1'
+
     logger.info("ShopPinkki Customer Web 시작 (포트 %d, 로봇: %s)", PORT, KNOWN_ROBOT_IDS)
-    print(f"\n  접속 URL:")
+    print(f"\n  접속 URL ({_private_ip}):")
     for rid in KNOWN_ROBOT_IDS:
-        print(f"    http://localhost:{PORT}/?robot_id={rid}")
+        print(f"    http://{_private_ip}:{PORT}/?robot_id={rid}")
     print(f"  테스트 아이디 / 비밀번호: test01 / 1234  (또는 test02 / 1234)")
     print()
     socketio.run(app, host="0.0.0.0", port=PORT, debug=False)

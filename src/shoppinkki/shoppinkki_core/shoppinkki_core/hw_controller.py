@@ -133,7 +133,12 @@ class HWController:
     # ── LCD 텍스트 / QR 렌더링 ─────────────────
 
     # IDLE 상태에서 표시할 고객 웹 URL
-    CUSTOMER_WEB_URL = 'http://192.168.102.100:8501'
+    # CUSTOMER_WEB_HOST 환경변수로 노트북 IP를 주입받음 (run_robot.sh에서 설정)
+    @staticmethod
+    def _get_customer_web_url() -> str:
+        import os
+        host = os.environ.get('CUSTOMER_WEB_HOST', '127.0.0.1')
+        return f'http://{host}:8501'
 
     _TEXT_LINES = {
         'CHARGING':  ['충전 중'],
@@ -289,7 +294,7 @@ class HWController:
         if state in ('TRACKING', 'TRACKING_CHECKOUT'):
             return
         if state == 'IDLE':
-            url   = f'{self.CUSTOMER_WEB_URL}/?robot_id={self._robot_id}'
+            url   = f'{self._get_customer_web_url()}/?robot_id={self._robot_id}'
             label = f'{self._robot_id}번 카트'
             logger.info('LCD: QR (%s)', url)
             self.display_qr(url, label=label)
