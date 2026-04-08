@@ -30,8 +30,8 @@ CHARGING_COMPLETE_THRESHOLD: int = 80  # battery % above which CHARGING → IDLE
 # ── Charger positions (map frame) ─────────
 # robot_id → (x, y, yaw)   — nav2_params 의 initial_pose 와 동기화
 CHARGER_POSES: dict[str, tuple[float, float, float]] = {
-    '54': (-0.056, -0.899, 0.0),   # P2
-    '18': (-0.056, -0.606, 0.0),   # P1
+    '54': (0.05, -0.899, 0.0),   # P2 (x를 벽에서 약간 떨어뜨림)
+    '18': (0.05, -0.606, 0.0),   # P1
 }
 
 # ── Robot connectivity ────────────────────────

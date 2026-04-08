@@ -101,7 +101,7 @@ controller_server:
       lookahead_time: 1.5
       transform_tolerance: 0.2
       use_velocity_scaled_lookahead_dist: true
-      use_collision_detection: false
+      use_collision_detection: true
       use_interpolation: true
       use_rotate_to_heading: true
       rotate_to_heading_min_angle: 0.35
@@ -137,8 +137,8 @@ local_costmap:
       plugins: ["voxel_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 1.0
-        inflation_radius: 0.0
+        cost_scaling_factor: 2.0
+        inflation_radius: 0.02
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: True
@@ -194,8 +194,8 @@ global_costmap:
         map_topic: /robot_54/map
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 1.0
-        inflation_radius: 0.0
+        cost_scaling_factor: 2.0
+        inflation_radius: 0.02
       always_send_full_costmap: True
 
 map_saver:
