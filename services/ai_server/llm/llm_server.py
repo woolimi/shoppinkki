@@ -66,7 +66,8 @@ def ask_qwen(user_query: str, search_result: str) -> str:
     """Ollama를 통해 Qwen 2.5 3B 모델에게 답변 생성 요청"""
     try:
         prompt = (
-            f"당신은 ShopPinkki 매장의 친절한 AI 점원입니다. 다음 검색 정보를 참고해서 손님에게 아주 짧고 친절하게 대답해 주세요.\n\n"
+            f"당신은 ShopPinkki 매장의 친절한 한국인 AI 점원입니다. 다음 검색 정보를 참고해서 손님에게 한국어로만 아주 짧고 친절하게 대답해 주세요.\n"
+            f"반드시 한자나 다른 외국어를 섞지 말고 순수 한국어로만 자연스럽게 말해 주세요.\n\n"
             f"매장 정보: {search_result}\n"
             f"손님 질문: {user_query}\n\n"
             f"답변 (한 문장으로):"
