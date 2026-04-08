@@ -2,30 +2,22 @@
 
 REST GET /query?name=<상품명>
 → {"zone_id": 3, "zone_name": "음료 코너"}
-
-검색 전략 (우선순위):
-  1) PostgreSQL PRODUCT 테이블에서 product_name LIKE '%name%' → zone_id/zone_name 반환
-  2) 정규화 키워드 매핑 (DB 연결 실패 시 fallback)
-  3) 미매칭 → 404
-
-환경 변수:
-    PG_HOST      기본 host.docker.internal
-    PG_PORT      기본 5432
-    PG_USER      기본 shoppinkki
-    PG_PASSWORD  기본 shoppinkki
-    PG_DATABASE  기본 shoppinkki
-    HOST         바인드 호스트 (기본 0.0.0.0)
-    PORT         바인드 포트 (기본 8000)
 """
 
 from __future__ import annotations
-
 import logging
 import os
 import re
+import requests
 from typing import Optional
 
 from flask import Flask, jsonify, request
+from sentence_transformers import SentenceTransformer
+import psycopg2
+import psycopg2.extras
+import numpy as np
+import warnings
+warnings.filterwarnings("ignore")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,7 +26,7 @@ logging.basicConfig(
 logger = logging.getLogger('llm_server')
 
 # ── 환경 변수 ──────────────────────────────────────────────────────────────────
-PG_HOST = os.environ.get('PG_HOST', 'host.docker.internal')
+PG_HOST = os.environ.get('PG_HOST', '127.0.0.1')
 PG_PORT = int(os.environ.get('PG_PORT', '5432'))
 PG_USER = os.environ.get('PG_USER', 'shoppinkki')
 PG_PASSWORD = os.environ.get('PG_PASSWORD', 'shoppinkki')
@@ -42,109 +34,156 @@ PG_DATABASE = os.environ.get('PG_DATABASE', 'shoppinkki')
 HOST = os.environ.get('HOST', '0.0.0.0')
 PORT = int(os.environ.get('PORT', '8000'))
 
-# ── fallback 키워드 맵 (DB 연결 불가 시) ──────────────────────────────────────
-# zone_id → (zone_name, [키워드, ...])
-# DB의 ZONE 테이블 기준 (product_type=1~8)
-_KEYWORD_MAP: list[dict] = [
-    {'zone_id': 1, 'zone_name': '과자 코너',   'keywords': ['과자', '스낵', '칩', 'cracker', 'snack', 'chip', '초코', '사탕', '젤리']},
-    {'zone_id': 2, 'zone_name': '라면 코너',   'keywords': ['라면', '면', 'ramen', '국수', '우동', '소면', '파스타']},
-    {'zone_id': 3, 'zone_name': '음료 코너',   'keywords': ['음료', '콜라', '사이다', '주스', '물', '커피', '차', '에너지', 'cola', 'juice', 'drink', '스파클링']},
-    {'zone_id': 4, 'zone_name': '유제품 코너', 'keywords': ['우유', '요거트', '치즈', '버터', 'milk', 'yogurt', 'cheese', '두유', '아이스크림']},
-    {'zone_id': 5, 'zone_name': '냉동식품 코너', 'keywords': ['냉동', '얼린', 'frozen', '피자', '만두', '핫도그', '너겟']},
-    {'zone_id': 6, 'zone_name': '통조림 코너', 'keywords': ['통조림', '캔', 'can', '참치', '스팸', '햄', '콩', '옥수수']},
-    {'zone_id': 7, 'zone_name': '생활용품 코너', 'keywords': ['샴푸', '비누', '세제', '화장지', '휴지', '칫솔', '치약', '샤워']},
-    {'zone_id': 8, 'zone_name': '빵 코너',    'keywords': ['빵', '식빵', 'bread', '토스트', '베이글', '크로와상', '케이크', '도넛']},
-]
+# Ollama 설정 (host 모드 적용으로 127.0.0.1 사용)
+OLLAMA_URL = os.environ.get('OLLAMA_URL', 'http://127.0.0.1:11434/api/generate')
+OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'qwen2.5:3b')
 
+# ── Sentence-Transformers 모델 로드 ──────────────────────────────
+EMBED_MODEL_NAME = 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'
+logger.info("Sentence-Transformers 모델(%s) 로드 중...", EMBED_MODEL_NAME)
+try:
+    _embed_model = SentenceTransformer(EMBED_MODEL_NAME)
+    logger.info("NLP 임베딩 모델 초기화 완료! (384차원)")
+except Exception as e:
+    logger.error("NLP 임베딩 초기화 에러: %s", e)
+    _embed_model = None
 
-def _normalize(text: str) -> str:
-    """검색어 정규화: 소문자, 공백 제거, 특수문자 제거."""
-    return re.sub(r'\s+', '', text.strip().lower())
+def vector_to_string(values: np.ndarray) -> str:
+    """PostgreSQL pgvector 형식을 위한 문자열 변환"""
+    return "[" + ", ".join(f"{v:.8f}" for v in values) + "]"
 
+def get_db_connection():
+    return psycopg2.connect(
+        host=PG_HOST,
+        port=PG_PORT,
+        user=PG_USER,
+        password=PG_PASSWORD,
+        dbname=PG_DATABASE,
+        connect_timeout=3
+    )
 
-def search_db(name: str) -> Optional[dict]:
-    """PostgreSQL PRODUCT·ZONE 테이블에서 상품명 검색."""
+def ask_qwen(user_query: str, search_result: str) -> str:
+    """Ollama를 통해 Qwen 2.5 3B 모델에게 답변 생성 요청"""
     try:
-        import psycopg2
-        import psycopg2.extras
-        conn = psycopg2.connect(
-            host=PG_HOST,
-            port=PG_PORT,
-            user=PG_USER,
-            password=PG_PASSWORD,
-            dbname=PG_DATABASE,
-            connect_timeout=3,
+        prompt = (
+            f"당신은 ShopPinkki 매장의 친절한 AI 점원입니다. 다음 검색 정보를 참고해서 손님에게 아주 짧고 친절하게 대답해 주세요.\n\n"
+            f"매장 정보: {search_result}\n"
+            f"손님 질문: {user_query}\n\n"
+            f"답변 (한 문장으로):"
         )
+        response = requests.post(
+            OLLAMA_URL,
+            json={
+                "model": OLLAMA_MODEL,
+                "prompt": prompt,
+                "stream": False,
+                "options": {"num_predict": 150, "temperature": 0.7}
+            },
+            timeout=15
+        )
+        if response.status_code == 200:
+            return response.json().get('response', '').strip()
+    except Exception as e:
+        logger.warning("Qwen 응답 생성 실패: %s", e)
+    return f"네, 찾으시는 상품은 {search_result} 지역에 있습니다."
+
+def search_context_in_db(name: str) -> Optional[dict]:
+    """pgvector 기반 벡터 검색"""
+    if _embed_model is None: return None
+    try:
+        query_vector = _embed_model.encode(name, normalize_embeddings=True)
+        vec_str = vector_to_string(query_vector)
+        
+        conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cursor.execute(
-            """
-            SELECT z.zone_id, z.zone_name
-            FROM PRODUCT p
-            JOIN ZONE z ON p.zone_id = z.zone_id
-            WHERE p.product_name LIKE %s
+        
+        query = """
+            SELECT type, display_name, zone_id, zone_name, distance FROM (
+                SELECT 'product' as type, p.product_name as display_name, z.zone_id, z.zone_name,
+                       (e.embedding <=> %s::vector) as distance
+                FROM PRODUCT_TEXT_EMBEDDING e
+                JOIN PRODUCT p ON e.product_id = p.product_id
+                JOIN ZONE z ON p.zone_id = z.zone_id
+                WHERE e.embedding IS NOT NULL
+                
+                UNION ALL
+                
+                SELECT 'zone' as type, z.zone_name as display_name, z.zone_id, z.zone_name,
+                       (ze.embedding <=> %s::vector) as distance
+                FROM ZONE_TEXT_EMBEDDING ze
+                JOIN ZONE z ON ze.zone_id = z.zone_id
+                WHERE ze.embedding IS NOT NULL
+            ) combined
+            ORDER BY distance ASC
             LIMIT 1
-            """,
-            (f'%{name}%',),
-        )
+        """
+        cursor.execute(query, (vec_str, vec_str))
         row = cursor.fetchone()
         cursor.close()
         conn.close()
-        if row:
-            return {'zone_id': row['zone_id'], 'zone_name': row['zone_name']}
+        
+        # Cosine Distance가 0.55 이하인 경우 유효 매칭으로 간주
+        if row and row['distance'] < 0.55:
+            return row
     except Exception as e:
-        logger.warning('DB 검색 실패: %s', e)
+        logger.error('벡터 검색 중 에러: %s', e)
     return None
 
+def extract_keywords(user_query: str) -> list[str]:
+    """Ollama를 사용하여 다중 키워드 추출"""
+    try:
+        prompt = (
+            f"당신은 매장 안내 시스템의 언어 분석기입니다. 다음 질문에서 핵심 '상품명'이나 '구역명', '상위 카테고리'를 최대 3개까지만 콤마(,)로 구분하여 추출하세요.\n"
+            f"질문: {user_query}\n"
+            f"키워드:"
+        )
+        response = requests.post(
+            OLLAMA_URL,
+            json={
+                "model": OLLAMA_MODEL,
+                "prompt": prompt,
+                "stream": False,
+                "options": {"num_predict": 30, "temperature": 0.1}
+            },
+            timeout=8
+        )
+        if response.status_code == 200:
+            raw = response.json().get('response', '').strip()
+            return [k.strip() for k in raw.split(',') if k.strip()]
+    except Exception as e:
+        logger.warning("키워드 추출 실패: %s", e)
+    return [user_query]
 
-def search_keyword(name: str) -> Optional[dict]:
-    """정규화 키워드 매핑으로 구역 검색 (fallback)."""
-    norm = _normalize(name)
-    for entry in _KEYWORD_MAP:
-        for kw in entry['keywords']:
-            if _normalize(kw) in norm or norm in _normalize(kw):
-                return {'zone_id': entry['zone_id'], 'zone_name': entry['zone_name']}
-    return None
-
-
-# ── Flask 앱 ───────────────────────────────────────────────────────────────────
 app = Flask(__name__)
-
+app.json.ensure_ascii = False
 
 @app.route('/query', methods=['GET'])
 def query():
-    """
-    GET /query?name=콜라
-    → 200 {"zone_id": 3, "zone_name": "음료 코너"}
-    → 404 {"error": "not_found"}
-    """
     name = request.args.get('name', '').strip()
-    if not name:
-        return jsonify({'error': 'name 파라미터 필요'}), 400
+    if not name: return jsonify({'error': 'name 필요'}), 400
+    
+    keywords = extract_keywords(name)
+    best_result = None
+    min_dist = 1.0
+    
+    for kw in keywords:
+        res = search_context_in_db(kw)
+        if res and res['distance'] < min_dist:
+            min_dist = res['distance']
+            best_result = res
+            
+    if best_result:
+        context_info = f"{best_result['display_name']} (구역: {best_result['zone_name']}, 번호: {best_result['zone_id']})"
+        answer = ask_qwen(name, context_info)
+        return jsonify({
+            'zone_id': best_result['zone_id'],
+            'zone_name': best_result['zone_name'],
+            'display_name': best_result['display_name'],
+            'distance': best_result['distance'],
+            'answer': answer
+        })
+    
+    return jsonify({'error': 'not_found', 'answer': "죄송합니다. 정보를 찾지 못했습니다."}), 404
 
-    logger.info('검색 요청: "%s"', name)
-
-    # 1) DB 검색
-    result = search_db(name)
-    if result:
-        logger.info('DB 매칭: "%s" → %s', name, result)
-        return jsonify(result)
-
-    # 2) 키워드 fallback
-    result = search_keyword(name)
-    if result:
-        logger.info('키워드 매칭: "%s" → %s', name, result)
-        return jsonify(result)
-
-    logger.info('미매칭: "%s"', name)
-    return jsonify({'error': 'not_found', 'name': name}), 404
-
-
-@app.route('/health', methods=['GET'])
-def health():
-    return jsonify({'status': 'ok'}), 200
-
-
-# ── 진입점 ────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
-    logger.info('ShopPinkki LLM 서버 시작 (포트 %d)', PORT)
     app.run(host=HOST, port=PORT, debug=False)

@@ -26,7 +26,7 @@ _ROS_WS="$(dirname "$_SCRIPTS_DIR")"
 # ── 공통 ROS 설정 ──────────────────────────────────────────────────────────────
 # 모든 tmux 실행 스크립트에서 단일 소스로 사용한다.
 # 외부에서 ROS_DOMAIN_ID 를 지정하면 그 값을 우선 사용한다.
-export ROS_DOMAIN_ID="14"
+export ROS_DOMAIN_ID="76"
 TMUX_ROS_ENV="export ROS_DOMAIN_ID=${ROS_DOMAIN_ID}"
 
 # ── 1. conda env 탐색 ─────────────────────────────────────────────────────────

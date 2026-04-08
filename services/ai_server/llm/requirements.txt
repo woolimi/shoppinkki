@@ -1,2 +1,8 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
 flask>=3.0.0
 psycopg2-binary>=2.9.0
+sentence-transformers>=2.2.2
+torch>=2.0.0
+numpy
+requests
+scikit-learn
