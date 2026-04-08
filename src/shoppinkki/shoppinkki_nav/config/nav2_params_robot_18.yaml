@@ -133,12 +133,12 @@ local_costmap:
       width: 1
       height: 1
       resolution: 0.01
-      footprint: '[[0.075, 0.055], [0.075, -0.055], [-0.075, -0.055], [-0.075, 0.055]]'
+      footprint: '[[0.060, 0.055], [0.060, -0.055], [-0.060, -0.055], [-0.060, 0.055]]'
       plugins: ["voxel_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 1.5
-        inflation_radius: 0.02
+        cost_scaling_factor: 1.0
+        inflation_radius: 0.01
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: True
@@ -170,7 +170,7 @@ global_costmap:
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: robot_18/base_footprint
-      footprint: '[[0.075, 0.055], [0.075, -0.055], [-0.075, -0.055], [-0.075, 0.055]]'
+      footprint: '[[0.060, 0.055], [0.060, -0.055], [-0.060, -0.055], [-0.060, 0.055]]'
       resolution: 0.01
       track_unknown_space: true
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
@@ -194,8 +194,8 @@ global_costmap:
         map_topic: /robot_18/map
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 2.0
-        inflation_radius: 0.03
+        cost_scaling_factor: 1.0
+        inflation_radius: 0.01
       always_send_full_costmap: True
 
 map_saver:
