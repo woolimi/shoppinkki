@@ -63,6 +63,46 @@ ros2 launch pinky_navigation nav2_view.launch.xml
 # Nav2 Goal을 클릭하고 이동
 ```
 
+## 멀티로봇 시뮬레이션 (Gazebo)
+
+```bash
+# 전체 스택 실행 (서버 + UI + Gazebo + Nav2 x2 + core x2)
+bash scripts/run_server.sh      # 터미널 A
+bash scripts/run_ui.sh          # 터미널 B
+bash scripts/run_sim.sh         # 터미널 C
+```
+
+Gazebo 로딩 완료(~60초) 후:
+1. admin_ui에서 각 로봇 **[위치 초기화]** 클릭
+2. customer_web `http://localhost:8501/?robot_id=54` 로그인
+
+```bash
+# 멀티로봇 launch 단독 실행 (디버깅용)
+ros2 launch shoppinkki_nav gz_multi_robot.launch.py
+
+# RViz 멀티로봇 뷰
+ros2 launch shoppinkki_nav multi_robot_rviz.launch.py
+
+# 네임스페이스별 토픽 확인
+ros2 topic echo /robot_54/scan
+ros2 topic echo /robot_18/odom
+ros2 topic echo /robot_54/amcl_pose
+```
+
+### 시뮬 트러블슈팅
+
+```bash
+# 좀비 프로세스 정리 (run_sim.sh가 자동으로 하지만 수동 필요 시)
+pkill -f "gz sim"; pkill -f "gz_sim"; sleep 2; pkill -9 -f "gz sim"
+
+# Gazebo clock 확인 (use_sim_time 동작 여부)
+ros2 topic echo /clock --once
+
+# Nav2 lifecycle 상태 확인
+ros2 lifecycle get /robot_54/controller_server
+ros2 lifecycle get /robot_54/amcl
+```
+
 ## 맵상의 좌표 얻기
 
 ###  클릭한 부분의 좌표를 얻는법
