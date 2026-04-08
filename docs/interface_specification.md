@@ -1,39 +1,44 @@
 # Interface Specification
 
-> **프로젝트:** 쑈삥끼 (ShopPinkki)
-> 모듈 간 통신 규칙 명세. 채널 A~H 기준: `docs/system_architecture.md`
+> **쑈삥끼 (ShopPinkki)** — 모듈 간 통신 규칙 전체 명세
+> 채널 레이블(A~H)은 `docs/system_architecture.md` 기준
 
 ---
 
-## 1. Python 모듈 간 인터페이스
-
-구현체 위치: `src/shoppinkki/shoppinkki_interfaces/`
-
-### 의존 관계
+## 채널 구성도
 
 ```
-shoppinkki_core (main_node)
-    ├── DollDetectorInterface    ← shoppinkki_perception 구현
-    ├── QRScannerInterface       ← shoppinkki_perception 구현
-    ├── NavBTInterface           ← shoppinkki_nav 구현
-    ├── BoundaryMonitorInterface ← shoppinkki_nav 구현
-    └── RobotPublisherInterface  ← shoppinkki_core 내부 구현
+Browser (Customer UI)
+    │  WebSocket (채널 A)
+    ▼
+customer_web :8501 ──[REST :8000]──▶ LLM AI (채널 D)
+    │  TCP :8080 (채널 C)
+    ▼
+control_service :8080/:8081
+    ├── [TCP :3306]  ──▶ MySQL        (채널 E)
+    ├── [TCP :5005]  ──▶ YOLO AI      (채널 F)
+    └── [ROS2 DDS]  ◀▶  Pi (shoppinkki_core) (채널 G)
+                              │
+Admin UI ──[TCP :8080]──▶ control_service (채널 B)
+                              Pi ◀▶ pinky_pro  (채널 H, ROS2 + UDP :9000)
 ```
 
-### `protocols.py`
+---
+
+## 1. Python 내부 프로토콜
+
+**위치:** `src/shoppinkki/shoppinkki_interfaces/shoppinkki_interfaces/protocols.py`
+
+### 공유 데이터 타입
 
 ```python
-from typing import Protocol, Optional
-from dataclasses import dataclass
-
-# ── 공유 데이터 타입 ──────────────────────────────────────────
-
 @dataclass
 class Detection:
-    cx: float           # bbox 중심 x (픽셀)
-    area: float         # bbox 넓이 (px²) — P-Control 선속도용
-    confidence: float   # YOLO 감지 신뢰도 (0~1)
-    reid_score: float   # ReID + 색상 유사도 (0~1)
+    cx: float          # bbox 중심 X (픽셀)
+    cy: float          # bbox 중심 Y (픽셀)
+    area: float        # bbox 면적 (픽셀²) — P-Control 선속도 계산용
+    confidence: float  # YOLO 감지 신뢰도 (0.0 ~ 1.0)
+    class_name: str = 'doll'
 
 @dataclass
 class CartItem:
@@ -41,247 +46,383 @@ class CartItem:
     product_name: str
     price: int
     is_paid: bool
+    scanned_at: str    # ISO-8601 datetime
 
+class BTStatus(Enum):
+    RUNNING = 'RUNNING'
+    SUCCESS = 'SUCCESS'
+    FAILURE = 'FAILURE'
+```
 
-# ── shoppinkki_perception ────────────────────────────────────
+### 인터페이스 프로토콜
 
+```python
 class DollDetectorInterface(Protocol):
-    def register(self, frame) -> bool: ...
-    # IDLE 단계: 프레임에서 인형 YOLO 감지 후 ReID + 색상 템플릿 등록.
-    # 감지 성공 시 True, 미감지 시 False.
+    def register(self, frame) -> None: ...
+    # IDLE 단계: 프레임에서 인형 감지 후 ReID + 색상 템플릿 등록
 
     def run(self, frame) -> None: ...
-    # TRACKING 단계: YOLO 감지 → ReID + 색상 매칭 → 결과를 내부 버퍼에 저장.
+    # TRACKING 단계: YOLO 감지 → ReID + 색상 매칭 → 내부 버퍼 갱신
 
     def get_latest(self) -> Optional[Detection]: ...
-    # 가장 최근 프레임의 주인 인형 감지 결과.
-    # 미감지 또는 ReID 임계값 미달 시 None.
+    # 최근 프레임의 주인 인형 감지 결과. 미감지·임계값 미달 시 None
 
     def is_ready(self) -> bool: ...
-    # register() 성공 후 True. SM이 IDLE → TRACKING 전환 판단에 사용.
+    # register() 성공 후 True — SM IDLE → TRACKING 전환 조건
+
+    def reset(self) -> None: ...
+    # 등록된 템플릿과 감지 버퍼 초기화
 
 
 class QRScannerInterface(Protocol):
-    def start(self, on_scanned: callable, on_timeout: callable) -> None: ...
-    # on_scanned(name: str, price: int) — 스캔 성공마다 호출, 타이머 리셋
-    # on_timeout() — 마지막 스캔으로부터 30초 무활동 시 호출
+    def start(self, on_scanned: Callable[[str], None], on_timeout: Callable[[], None]) -> None: ...
+    # on_scanned(data) — 스캔 성공마다 호출
+    # on_timeout()     — 마지막 스캔으로부터 30초 무활동 시 호출
 
     def stop(self) -> None: ...
 
-
-# ── shoppinkki_nav ───────────────────────────────────────────
 
 class NavBTInterface(Protocol):
-    def start(self, **kwargs) -> None: ...
-    # BTGuiding: start(zone_id=6)
-    # BTReturning: start(slot_zone_id=140)
-
-    def stop(self) -> None: ...
-
-    def tick(self) -> str: ...
-    # 반환: "RUNNING" | "SUCCESS" | "FAILURE"
+    def start(self) -> None: ...   # SM 상태 진입 시 활성화
+    def stop(self)  -> None: ...   # SM 상태 이탈 시 비활성화
+    def tick(self)  -> BTStatus: ...  # RUNNING | SUCCESS | FAILURE
 
 
 class BoundaryMonitorInterface(Protocol):
-    def set_callbacks(
-        self,
-        on_checkout_enter: callable,
-        on_checkout_exit_blocked: callable,
-        on_checkout_reenter: callable,
-    ) -> None: ...
-    # on_checkout_enter()         — TRACKING 중 결제 구역 진입 감지 (1회)
-    # on_checkout_exit_blocked()  — TRACKING 중 출구 방향 이동 차단
-    # on_checkout_reenter()       — TRACKING_CHECKOUT 중 결제 구역 재진입
+    def start(self) -> None: ...
+    def stop(self)  -> None: ...
+    def set_active(self, active: bool) -> None: ...
+    # TRACKING 계열 상태에서만 경계 체크 활성화
 
-    def update_pose(self, x: float, y: float) -> None: ...
-    # /amcl_pose 수신마다 호출
-
-
-# ── shoppinkki_core 내부 ─────────────────────────────────────
 
 class RobotPublisherInterface(Protocol):
-    def publish_status(
-        self,
-        mode: str,
-        pos_x: float,
-        pos_y: float,
-        battery: int,
-        is_locked_return: bool = False,
-    ) -> None: ...
-    # /robot_<id>/status 발행 (1~2Hz heartbeat)
+    def publish_cmd_vel(self, linear_x: float, angular_z: float) -> None: ...
+    # /cmd_vel 발행 (geometry_msgs/Twist)
 
-    def publish_staff_call(self, event_type: str) -> None: ...
-    # /robot_<id>/alarm 발행. event_type: 'LOCKED' | 'HALTED'
+    def publish_status(self, mode: str, pos_x: float, pos_y: float,
+                       battery: float, is_locked_return: bool) -> None: ...
+    # /robot_<id>/status 발행
 
-    def get_cart_items(self) -> list[CartItem]: ...
-    def has_unpaid_items(self) -> bool: ...
-    # is_paid=False인 CART_ITEM 존재 여부. 보내주기 분기 판단용
+    def publish_alarm(self, event: str) -> None: ...
+    # /robot_<id>/alarm 발행 — event: 'LOCKED' | 'HALTED'
 
-    def add_cart_item(self, product_name: str, price: int) -> None: ...
-    def delete_cart_item(self, item_id: int) -> None: ...
-    def mark_items_paid(self) -> None: ...
-    # 현재 is_paid=0인 CART_ITEM 전체 → is_paid=1
-
-    def terminate_session(self) -> None: ...
-    # SESSION.is_active=False + CART_ITEM 전체 삭제
+    def publish_cart(self, items: List[CartItem]) -> None: ...
+    # /robot_<id>/cart 발행
 ```
 
 ---
 
-## 2. 채널별 메시지 명세
+## 2. 채널 A — Customer UI ↔ customer_web (SocketIO :8501)
 
-### 채널 A — Customer UI ↔ customer_web (WebSocket)
+### Browser → Web (SocketIO 이벤트)
 
-| 방향 | 메시지 | 설명 |
+| 이벤트 | 페이로드 | 설명 |
 |---|---|---|
-| 앱 → web | `{"cmd": "mode", "value": "WAITING"}` | [대기하기] 클릭 |
-| 앱 → web | `{"cmd": "resume_tracking"}` | [따라가기] / 도착 팝업 [확인] 클릭 |
-| 앱 → web | `{"cmd": "return"}` | [쇼핑 종료] 클릭 (보내주기) |
-| 앱 → web | `{"cmd": "navigate_to", "zone_id": 6}` | 상품 안내 요청 |
-| 앱 → web | `{"cmd": "delete_item", "item_id": 3}` | 장바구니 항목 삭제 |
-| web → 앱 | `{"type": "status", "my_robot": {"robot_id": 54, "mode": "TRACKING", "pos_x": 1.2, "pos_y": 0.8, "battery": 72, "is_locked_return": false}, "other_robots": [{"robot_id": 18, "pos_x": 0.5, "pos_y": 0.3}]}` | 1~2Hz push. `other_robots`는 위치만 포함 |
-| web → 앱 | `{"type": "cart", "items": [{"id": 1, "name": "콜라", "price": 1500, "is_paid": false}]}` | 장바구니 갱신 |
-| web → 앱 | `{"type": "registration_done"}` | 인형 등록 완료 → 메인 화면 전환 |
-| web → 앱 | `{"type": "checkout_zone_enter"}` | 결제 구역 진입 → 결제 팝업(3-F) 표시 |
-| web → 앱 | `{"type": "checkout_blocked"}` | 미결제 출구 시도 차단 → 토스트 표시 |
-| web → 앱 | `{"type": "payment_done"}` | 결제 완료 → 팝업 닫힘, 뱃지 TRACKING_CHECKOUT 전환 |
-| web → 앱 | `{"type": "find_product_result", "zone_id": 6, "zone_name": "음료"}` | 상품 검색 결과 |
-| web → 앱 | `{"type": "arrived", "zone_name": "음료"}` | 도착 팝업(3-H) 표시 |
-| web → 앱 | `{"type": "nav_failed"}` | 안내 실패 토스트 |
-| web → 앱 | `{"type": "enter_locked"}` | LOCKED 알림 패널(3-G) 전환 |
-| web → 앱 | `{"type": "enter_halted"}` | HALTED 알림 패널(3-I) 전환 |
-| web → 앱 | `{"type": "staff_resolved"}` | 세션 종료 → login.html 리다이렉트 |
+| `mode` | `{value: "WAITING"\|"RETURNING"}` | 대기 / 보내주기 |
+| `resume_tracking` | `{}` | [따라가기] / 도착 팝업 [확인] |
+| `return` | `{}` | [쇼핑 종료] → RETURNING 전환 |
+| `navigate_to` | `{zone_id: int}` | 상품 안내 요청 |
+| `payment` | `{}` | 결제 처리 요청 |
+| `delete_item` | `{item_id: int}` | 장바구니 항목 삭제 |
+| `qr_scan` | `{data: "QR_TEXT"}` | 시뮬레이션 모드 QR 스캔 |
+| `update_quantity` | `{item_id: int, quantity: int}` | 수량 변경 |
+| `enter_simulation` | `{}` | 시뮬레이션 모드 진입 |
+| `find_product` | `{name: "상품명"}` | 자연어 상품 검색 |
 
----
+### Web → Browser (SocketIO emit)
 
-### 채널 B — Admin UI ↔ control_service (TCP :8080)
-
-| 방향 | 메시지 | 설명 |
+| 이벤트 | 페이로드 | 발생 시점 |
 |---|---|---|
-| admin → control | `{"cmd": "mode", "robot_id": 54, "value": "WAITING"\|"RETURNING"}` | 모드 전환 |
-| admin → control | `{"cmd": "resume_tracking", "robot_id": 54}` | [추종] 버튼 — Pi SM `resume_tracking()` 호출 |
-| admin → control | `{"cmd": "force_terminate", "robot_id": 54}` | 강제 종료 |
-| admin → control | `{"cmd": "staff_resolved", "robot_id": 54}` | 잠금 해제 / 초기화 |
-| admin → control | `{"cmd": "admin_goto", "robot_id": 54, "x": 1.2, "y": 0.8, "theta": 0.0}` | IDLE 상태에서 Nav2 직접 목표 |
-| control → admin | `{"type": "status", "robot_id": 54, "mode": "TRACKING", "pos_x": 1.2, "pos_y": 0.8, "battery": 72, "is_locked_return": false, "bbox": {"cx": 320, "cy": 240, "w": 180, "h": 230, "conf": 0.92}}` | 1~2Hz push. `bbox`는 추종 중(TRACKING / TRACKING_CHECKOUT)일 때만 포함, 미감지 시 null |
-| control → admin | `{"type": "staff_call", "robot_id": 54, "event_type": "LOCKED"\|"HALTED", "occurred_at": "..."}` | 직원 호출 이벤트 |
-| control → admin | `{"type": "staff_resolved", "robot_id": 54}` | 처리 완료 확인 |
-| control → admin | `{"type": "offline", "robot_id": 54}` | 오프라인 감지 |
-| control → admin | `{"type": "online", "robot_id": 54}` | 온라인 복귀 |
-| control → admin | `{"type": "event", "robot_id": 54, "event_type": "...", "event_detail": "...", "occurred_at": "..."}` | 운용 이벤트 |
-| control → admin | `{"type": "admin_goto_rejected", "robot_id": 54}` | admin_goto 거부 (IDLE 아님) |
+| `control_connected` | `{connected: bool}` | control_service TCP 연결 상태 변화 |
+| `status` | [status 객체](#status-객체) | 1~2Hz heartbeat |
+| `cart` | `{type: "cart", items: [장바구니 항목...]}` | QR 스캔 / 수량 변경 후 |
+| `registration_done` | `{type: "registration_done", robot_id: "54"}` | IDLE → TRACKING 전환 감지 |
+| `payment_done` | `{type: "payment_done"}` | 결제 완료 *(서버 실제 타입: `payment_success`)*  ⚠️ |
+| `find_product_result` | `{zone_id: int, zone_name: "음료"}` 또는 `{error: "..."}` | LLM 검색 결과 (web에서 직접 처리) |
+| `checkout_zone_enter` | — | 결제 구역 진입 *(미구현)* ⚠️ |
+| `checkout_blocked` | — | 미결제 출구 차단 *(미구현)* ⚠️ |
+| `arrived` | — | 안내 목적지 도착 *(미구현)* ⚠️ |
+| `nav_failed` | — | 안내 실패 *(미구현)* ⚠️ |
+| `enter_locked` | — | LOCKED 알림 *(서버 실제 타입: `alarm`)* ⚠️ |
+| `enter_halted` | — | HALTED 알림 *(서버 실제 타입: `alarm`)* ⚠️ |
+| `staff_resolved` | — | 직원 처리 완료 *(미구현)* ⚠️ |
 
 ---
 
-### 채널 C — customer_web ↔ control_service (TCP :8080, JSON 개행 구분)
+## 3. 채널 B — Admin UI ↔ control_service (TCP :8080)
 
-| 방향 | 메시지 |
-|---|---|
-| web → control | `{"cmd": "session_check", "robot_id": 54}` |
-| web → control | `{"cmd": "login", "robot_id": 54, "user_id": "hong123", "password": "..."}` |
-| web → control | `{"cmd": "mode", "robot_id": 54, "value": "WAITING"}` |
-| web → control | `{"cmd": "resume_tracking", "robot_id": 54}` |
-| web → control | `{"cmd": "return", "robot_id": 54}` |
-| web → control | `{"cmd": "navigate_to", "robot_id": 54, "zone_id": 6}` |
-| web → control | `{"cmd": "delete_item", "robot_id": 54, "item_id": 3}` |
-| web → control | `{"cmd": "process_payment", "robot_id": 54}` |
-| control → web | `{"type": "status", "my_robot": {...}, "other_robots": [...]}` | 1~2Hz push |
-| control → web | `{"type": "cart", "robot_id": 54, "items": [...]}` |
-| control → web | `{"type": "checkout_zone_enter", "robot_id": 54}` |
-| control → web | `{"type": "checkout_blocked", "robot_id": 54}` |
-| control → web | `{"type": "payment_done", "robot_id": 54}` |
-| control → web | `{"type": "arrived", "robot_id": 54, "zone_name": "음료"}` |
-| control → web | `{"type": "find_product_result", "robot_id": 54, "zone_id": 6, "zone_name": "음료"}` |
-| control → web | `{"type": "nav_failed", "robot_id": 54}` |
-| control → web | `{"type": "enter_locked", "robot_id": 54}` |
-| control → web | `{"type": "enter_halted", "robot_id": 54}` |
-| control → web | `{"type": "staff_resolved", "robot_id": 54}` |
+JSON 개행 구분. 연결 후 반드시 등록 메시지 먼저 전송.
+
+### 연결 등록
+
+```json
+// 요청
+{"type": "register", "role": "admin"}
+
+// 응답
+{"type": "registered", "role": "admin"}
+```
+
+### Admin → control_service (명령)
+
+| cmd | 추가 필드 | 제약 조건 | 설명 |
+|---|---|---|---|
+| `admin_goto` | `x, y, theta` | IDLE 상태에서만 | Nav2 직접 목표 전송 |
+| `init_pose` | — | CHARGING / IDLE 상태에서만 | AMCL 초기 위치 설정 |
+| `start_session` | `user_id` | — | 세션 시작 → Pi에 relay |
+| `mode` | `value: "WAITING"\|"RETURNING"` | — | 모드 전환 |
+| `resume_tracking` | — | — | 추종 재개 |
+| `navigate_to` | `x, y, theta, zone_id` | — | 안내 목표 전송 |
+| `force_terminate` | — | — | 강제 세션 종료 |
+| `staff_resolved` | — | — | 잠금 해제 / 초기화 |
+
+모든 명령 공통 필드: `{"cmd": "<cmd>", "robot_id": "54", ...}`
+
+### control_service → Admin (push)
+
+| type | 페이로드 | 설명 |
+|---|---|---|
+| `status` | [status 객체](#status-객체) | 1~2Hz heartbeat |
+| `alarm` | `{robot_id, event: "LOCKED"\|"HALTED"}` | 로봇 알람 이벤트 |
+| `admin_goto_rejected` | `{robot_id, reason: "..."}` | IDLE 아닌 상태에서 admin_goto 거부 |
+| `init_pose_rejected` | `{robot_id, reason: "..."}` | CHARGING/IDLE 아닌 상태에서 init_pose 거부 |
 
 ---
 
-### 채널 D — customer_web ↔ LLM (REST HTTP :8000)
+## 4. 채널 C — customer_web ↔ control_service (TCP :8080)
 
-customer_web이 LLM Docker 서비스를 직접 호출. 자연어 상품 검색 전용.
+JSON 개행 구분. 연결 후 반드시 등록 메시지 먼저 전송.
+
+### 연결 등록
+
+```json
+// 요청
+{"type": "register", "role": "web", "robot_id": "54"}
+
+// 응답
+{"type": "registered", "role": "web", "robot_id": "54"}
+```
+
+### customer_web → control_service (명령)
+
+| cmd | 추가 필드 | 설명 |
+|---|---|---|
+| `start_session` | `user_id` | 세션 시작 → Pi relay |
+| `mode` | `value: "WAITING"\|"RETURNING"` | 모드 전환 |
+| `resume_tracking` | — | 추종 재개 |
+| `return` | — | RETURNING 전환 (mode=RETURNING relay) |
+| `navigate_to` | `zone_id` | zone_id로 DB 조회 후 x/y/theta 보완하여 Pi relay |
+| `process_payment` | — | DB 결제 처리 + `payment_success` Pi relay |
+| `delete_item` | `item_id` | 장바구니 항목 삭제 Pi relay |
+| `qr_scan` | `qr_data` | 시뮬레이션 QR 스캔 → DB 항목 추가 + cart push |
+| `update_quantity` | `item_id, quantity` | 수량 변경 → DB 업데이트 + cart push |
+| `enter_simulation` | — | 시뮬레이션 모드 진입 Pi relay |
+
+모든 명령 공통 필드: `{"cmd": "<cmd>", "robot_id": "54", ...}`
+
+### control_service → customer_web (push)
+
+채널 B admin push와 동일한 `status` 외에 web 전용 push:
+
+| type | 페이로드 | 설명 |
+|---|---|---|
+| `status` | [status 객체](#status-객체) | 1~2Hz heartbeat |
+| `registration_done` | `{robot_id}` | IDLE → TRACKING 전환 감지 |
+| `cart` | `{items: [장바구니 항목...]}` | QR 스캔 / 수량 변경 후 갱신 |
+| `payment_success` | `{}` | 결제 완료 *(control_client dispatch 목록은 `payment_done` — 불일치)* ⚠️ |
+| `alarm` | `{event: "LOCKED"\|"HALTED"}` | 알람 *(dispatch 목록은 `enter_locked`/`enter_halted` — 불일치)* ⚠️ |
+| `cart_update` | `{items: [...]}` | Pi `/robot_<id>/cart` 수신 시 *(dispatch 목록 미등록 — 브라우저 미전달)* ⚠️ |
+
+---
+
+## 5. 채널 D — customer_web ↔ LLM (REST :8000)
+
+`find_product` SocketIO 이벤트를 customer_web이 직접 처리. TCP 채널 미경유.
 
 | 메서드 | 경로 | 요청 | 응답 |
 |---|---|---|---|
 | GET | `/query` | `?name=콜라` | `{"zone_id": 3, "zone_name": "음료 코너"}` |
+| GET | `/query` | `?name=없는상품` | `{"error": "not_found", "name": "없는상품"}` (404) |
+| GET | `/query` | (name 미포함) | `{"error": "name 파라미터 필요"}` (400) |
 
 ---
 
-### 채널 E — control_service ↔ MySQL DB (TCP :3306)
+## 6. 채널 E — control_service ↔ MySQL (:3306)
 
-MySQL 서버 독립 프로세스. `mysql-connector-python`으로 접속.
-연결 설정: 환경 변수 `MYSQL_HOST` / `MYSQL_PORT` / `MYSQL_USER` / `MYSQL_PASSWORD` / `MYSQL_DATABASE`
+MySQL 독립 프로세스. `mysql-connector-python`으로 접속.
+
+환경 변수: `MYSQL_HOST` / `MYSQL_PORT` / `MYSQL_USER` / `MYSQL_PASSWORD` / `MYSQL_DATABASE`
+
+플레이스홀더: `%s`. 항상 `cursor(dictionary=True)` 사용.
+
+스키마 상세: `docs/erd.md`
 
 ---
 
-### 채널 F — control_service ↔ AI Server YOLO (TCP + UDP 하이브리드)
+## 7. 채널 F — control_service ↔ YOLO AI (TCP :5005)
 
-Pi에서 수신한 카메라 스트림을 YOLO 추론 서버로 전달.
+Pi에서 수신한 카메라 UDP 스트림을 YOLO 추론 서버(Docker)로 전달.
 
-| 방향 | 프로토콜 | 데이터 |
+| 방향 | 프로토콜 | 포맷 |
 |---|---|---|
-| control → YOLO | **UDP** | 원시 영상 프레임 (고용량, 지연 최소화) |
-| YOLO → control | **TCP** | `{"cx": 320, "area": 12000, "confidence": 0.92}` (유실 불허) |
+| control → YOLO | **TCP binary** | `[4byte 길이 (big-endian)][JPEG bytes]` |
+| YOLO → control | **TCP** (same conn) | `{"cx": 320.5, "cy": 240.3, "area": 12000.0, "confidence": 0.92, "x1": ..., "y1": ..., "x2": ..., "y2": ...}` 또는 `{}` (미감지) |
+
+> **주의:** 구 문서에는 control → YOLO가 UDP라고 명시되어 있으나, 실제 구현은 TCP binary 프로토콜(`yolo_server.py`).
 
 ---
 
-### 채널 G — control_service ↔ shoppinkki packages (ROS 2 DDS, `ROS_DOMAIN_ID=14`)
+## 8. 채널 G — Pi ↔ control_service (ROS 2 DDS, `ROS_DOMAIN_ID=14`)
 
-**Pi → control_service:**
+### Pi → control_service
 
-| 토픽 | 타입 | 페이로드 |
-|---|---|---|
-| `/robot_<id>/status` | `std_msgs/String` | `{"mode": "TRACKING", "pos_x": 1.2, "pos_y": 0.8, "battery": 72, "is_locked_return": false}` |
-| `/robot_<id>/alarm` | `std_msgs/String` | `{"event": "LOCKED"\|"HALTED"}` |
-| `/robot_<id>/cart` | `std_msgs/String` | `{"items": [{"id": 1, "name": "콜라", "price": 1500, "is_paid": false}]}` |
+| 토픽 | 타입 | 주기 | 페이로드 |
+|---|---|---|---|
+| `/robot_<id>/status` | `std_msgs/String` | 1 Hz | [status JSON](#ros-status-페이로드) |
+| `/robot_<id>/alarm` | `std_msgs/String` | 이벤트 | `{"event": "LOCKED"\|"HALTED"}` |
+| `/robot_<id>/cart` | `std_msgs/String` | 변경 시 | `{"items": [{id, name, price, quantity, is_paid}...]}` |
 
-**control_service → Pi (`/robot_<id>/cmd`):**
+#### ROS status 페이로드
+
+```json
+{
+  "mode": "IDLE|TRACKING|TRACKING_CHECKOUT|WAITING|GUIDING|RETURNING|CHARGING|HALTED",
+  "pos_x": 1.2,
+  "pos_y": 0.8,
+  "yaw": 0.0,
+  "battery": 72.0,
+  "is_locked_return": false,
+  "follow_disabled": false
+}
+```
+
+### control_service → Pi (`/robot_<id>/cmd`)
 
 | cmd | 페이로드 | Pi 동작 |
 |---|---|---|
-| `start_session` | `{"cmd": "start_session", "user_id": "hong123"}` | CHARGING → IDLE |
-| `mode` | `{"cmd": "mode", "value": "WAITING"\|"RETURNING"}` | SM 전환 |
-| `resume_tracking` | `{"cmd": "resume_tracking"}` | `sm.resume_tracking()` 호출 → TRACKING 또는 TRACKING_CHECKOUT |
-| `navigate_to` | `{"cmd": "navigate_to", "zone_id": 6, "x": 1.2, "y": 0.8, "theta": 0.0}` | SM → GUIDING + Nav2 Goal |
-| `payment_success` | `{"cmd": "payment_success"}` | `sm.trigger('enter_tracking_checkout')` + `mark_items_paid()` |
-| `delete_item` | `{"cmd": "delete_item", "item_id": 3}` | CART_ITEM 삭제 |
-| `force_terminate` | `{"cmd": "force_terminate"}` | 세션 종료 → CHARGING |
-| `staff_resolved` | `{"cmd": "staff_resolved"}` | `is_locked_return=False` + 세션 종료 → CHARGING |
-| `admin_goto` | `{"cmd": "admin_goto", "x": 1.2, "y": 0.8, "theta": 0.0}` | IDLE 상태에서 Nav2 직접 목표 전송 |
+| `start_session` | `{cmd, user_id}` | CHARGING → IDLE |
+| `mode` | `{cmd, value: "WAITING"\|"RETURNING"}` | SM 전환 |
+| `resume_tracking` | `{cmd}` | `sm.resume_tracking()` |
+| `navigate_to` | `{cmd, zone_id, x, y, theta}` | SM → GUIDING + Nav2 목표 |
+| `payment_success` | `{cmd}` | `sm.enter_tracking_checkout()` + `mark_items_paid()` |
+| `delete_item` | `{cmd, item_id}` | 장바구니 항목 삭제 |
+| `force_terminate` | `{cmd}` | 세션 종료 → CHARGING |
+| `staff_resolved` | `{cmd}` | `is_locked_return=False` + 세션 종료 → CHARGING |
+| `admin_goto` | `{cmd, x, y, theta}` | IDLE 상태에서 Nav2 직접 목표 |
+| `enter_simulation` | `{cmd}` | `follow_disabled=True` + SM → TRACKING |
+
+### Nav2 Action Client (Pi 내부)
+
+- 액션명: `robot_{ROBOT_ID}/navigate_to_pose`
+- 타입: `nav2_msgs/action/NavigateToPose`
+- Goal: `PoseStamped` — position(x, y), orientation(z = sin(θ/2), w = cos(θ/2))
+- QoS: `/amcl_pose` 구독 — `RELIABLE + TRANSIENT_LOCAL`
 
 ---
 
-### 채널 H — control_service ↔ pinky_pro packages (ROS 2 + UDP)
+## 9. 채널 H — Pi ↔ pinky_pro (ROS 2 + UDP :9000)
 
 | 방향 | 프로토콜 | 데이터 |
 |---|---|---|
-| control → pinky | ROS 2 DDS | `/cmd_vel` (`geometry_msgs/Twist`) — 모터 속도 명령 |
-| pinky → control | ROS 2 DDS | `/odom`, `/scan`, `/amcl_pose` — 오도메트리, LiDAR, AMCL |
-| pinky → control | **UDP** | 원시 카메라 프레임 — 채널 F로 전달 |
+| Pi → control | **UDP :9000** | `[2byte robot_id 길이][robot_id bytes][JPEG bytes]` |
+| control → Pi | ROS 2 DDS | `/cmd_vel` (`geometry_msgs/Twist`) |
+| Pi → control | ROS 2 DDS | `/robot_<id>/amcl_pose` (`PoseWithCovarianceStamped`), `/odom`, `/scan` |
+
+수신된 UDP 카메라 프레임은 control_service에서 채널 F (YOLO TCP)로 포워딩.
 
 ---
 
-## 3. REST API (control_service :8080)
+## 10. REST API — control_service (:8081)
 
-customer_web과 Nav2 BT가 control_service에 질의하는 내부 API.
+모든 응답: `Content-Type: application/json`. 에러: `{"error": "message"}`.
+
+### 로봇 상태
 
 | 메서드 | 경로 | 응답 | 설명 |
 |---|---|---|---|
-| GET | `/zone/<zone_id>/waypoint` | `{"x": 1.2, "y": 0.8, "theta": 0.0}` | Nav2 목표 좌표 조회 |
-| GET | `/zone/parking/available` | `{"zone_id": 140}` | 비어 있는 충전소 슬롯(140 / 141) 1개 반환 |
-| GET | `/boundary` | `{"shop_boundary": {...}, "payment_zone": {...}}` | BOUNDARY_CONFIG 전체 |
-| GET | `/events?robot_id=<id>&limit=<n>` | `[{"log_id":1, "event_type":"SESSION_START", ...}]` | EVENT_LOG 조회 |
-| POST | `/session` | `{"session_id": "..."}` | 세션 생성 |
-| GET | `/session/<session_id>` | `{"is_active": true, "expires_at": "..."}` | 세션 유효성 확인 |
-| PATCH | `/session/<session_id>` | `{"ok": true}` | 세션 종료 (`is_active=false`) |
-| POST | `/cart/<session_id>/item` | `{"item_id": 5}` | CART_ITEM 추가 |
-| DELETE | `/cart/<session_id>/item/<item_id>` | `{"ok": true}` | CART_ITEM 삭제 |
-| PATCH | `/cart/<session_id>/items/mark_paid` | `{"ok": true}` | `is_paid=0` 전체 → 1 (결제 완료) |
-| GET | `/cart/<session_id>/has_unpaid` | `{"has_unpaid": true}` | 미결제 항목 존재 여부 |
-| GET | `/camera/<robot_id>` | MJPEG 스트림 | 로봇 카메라 영상 스트림 (Content-Type: multipart/x-mixed-replace) |
+| GET | `/robots` | `{robot_id: {mode, pos_x, pos_y, battery, is_locked_return, active_user_id}}` | 전체 로봇 상태 |
 
-> **`/camera/<robot_id>`:** control_service가 채널 H(UDP)로 수신한 카메라 프레임을 MJPEG 형식으로 re-stream. Admin UI에서 QThread로 구독하여 카메라 디버그 패널에 표시. 해당 로봇이 오프라인이거나 스트림이 없으면 HTTP 503 반환.
+### 존 / 경계
 
-> **`/zone/parking/available`:** ROBOT 테이블에서 `current_mode != 'OFFLINE'`이고 `pos_x`, `pos_y`가 슬롯 140/141 waypoint 반경 이내인 로봇 수를 확인하여 빈 슬롯 ID를 반환. 두 슬롯 모두 사용 중이면 140 반환(대기).
+| 메서드 | 경로 | 응답 |
+|---|---|---|
+| GET | `/zone/<zone_id>/waypoint` | `{zone_id, zone_name, zone_type, x, y, theta}` |
+| GET | `/zone/parking/available` | `{zone_id, zone_name, zone_type, x, y, theta}` (빈 슬롯 1개) |
+| GET | `/boundary` | 경계 설정 배열 |
+
+### 세션
+
+| 메서드 | 경로 | 요청 / 응답 |
+|---|---|---|
+| POST | `/session` | 요청: `{robot_id, user_id, password}` / 응답: `{session_id, cart_id}` (201) |
+| GET | `/session/robot/<robot_id>` | 응답: `{session_id, cart_id}` |
+| GET | `/session/<id>` | 응답: 세션 객체 |
+| PATCH | `/session/<id>` | 요청: `{is_active: 0}` / 응답: `{ok: true}` |
+
+### 장바구니
+
+| 메서드 | 경로 | 요청 / 응답 |
+|---|---|---|
+| GET | `/cart/<cart_id>` | 응답: 장바구니 항목 배열 |
+| POST | `/cart/<cart_id>/item` | 요청: `{product_name, price}` / 응답: `{item_id}` (201) |
+| DELETE | `/item/<item_id>` | 응답: `{ok: true}` |
+| PATCH | `/cart/<cart_id>/items/mark_paid` | 응답: `{ok: true}` |
+| GET | `/cart/<cart_id>/has_unpaid` | 응답: `{has_unpaid: bool}` |
+
+### 기타
+
+| 메서드 | 경로 | 응답 |
+|---|---|---|
+| GET | `/events?limit=<n>` | 이벤트 로그 배열 (기본 limit=100) |
+| GET | `/camera/<robot_id>` | MJPEG 스트림 (`multipart/x-mixed-replace`). 오프라인 시 503 |
+| GET | `/health` | `{ok: true}` |
+
+> **`/zone/parking/available`:** 메모리 캐시 기반 — ROBOT 상태에서 슬롯 140/141 waypoint 반경 0.15m 이내 로봇 유무 확인. 두 슬롯 모두 점유 시 슬롯 140 반환.
+
+---
+
+## 공유 객체 포맷
+
+### status 객체
+
+```json
+{
+  "type": "status",
+  "robot_id": "54",
+  "mode": "TRACKING",
+  "pos_x": 1.2,
+  "pos_y": 0.8,
+  "yaw": 0.0,
+  "battery": 72.0,
+  "is_locked_return": false,
+  "follow_disabled": false,
+  "bbox": {
+    "cx": 320.5,
+    "cy": 240.3,
+    "area": 12000.0,
+    "confidence": 0.92,
+    "x1": 200.0, "y1": 100.0, "x2": 440.0, "y2": 380.0
+  }
+}
+```
+
+- `bbox`: TRACKING / TRACKING_CHECKOUT 중 YOLO 감지 시 포함, 미감지 시 `null`
+
+### 장바구니 항목
+
+```json
+{"id": 1, "name": "콜라", "price": 1500, "quantity": 2, "is_paid": false}
+```
+
+> **주의:** 브라우저 전달 포맷은 `id` / `name` (DB 컬럼명 `item_id` / `product_name`과 다름)
+
+---
+
+## ⚠️ 알려진 불일치 (구현 필요)
+
+| 위치 | 문제 | 현재 상태 |
+|---|---|---|
+| 채널 C → 채널 A | `payment_success` 전송, 브라우저는 `payment_done` 기대 | 불일치 — 어느 쪽이든 통일 필요 |
+| 채널 C → 채널 A | `alarm` 전송, 브라우저는 `enter_locked`/`enter_halted` 기대 | 불일치 — dispatch 목록 또는 push 타입 수정 필요 |
+| 채널 G → 채널 C | Pi `/cart` 수신 시 `cart_update` 전송, dispatch 목록 미등록 | 브라우저에 Pi 장바구니 갱신 미전달 |
+| 채널 A | `checkout_zone_enter`, `checkout_blocked`, `arrived`, `nav_failed`, `staff_resolved` | dispatch 목록에 있으나 control_service 미구현 |

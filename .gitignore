@@ -6,4 +6,5 @@
 **/__pycache__/
 pyrightconfig.json
 .DS_Store
-scripts/qr_codes/
+scripts/qr_codes/.rmf_schedule_node.yaml
+log.css
