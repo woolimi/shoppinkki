@@ -42,10 +42,10 @@ rmf_fleet:
   robots:
     pinky_54:
       charger: "P1"
-      initial_orientation: 0.0
+      initial_orientation: 1.5708   # 90° (북쪽)
     pinky_18:
       charger: "P2"
-      initial_orientation: 0.0
+      initial_orientation: 1.5708
 
 # Control Service 연결 (fleet_adapter → control_service REST API)
 control_service:

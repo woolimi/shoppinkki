@@ -33,6 +33,27 @@ import requests
 logger = logging.getLogger(__name__)
 
 
+# ── 헬퍼 ───────────────────────────────────────────────────────────────────────
+
+def _parse_waypoint_coords(nav_graph_path: str) -> dict[str, tuple[float, float]]:
+    """nav_graph YAML에서 waypoint 이름 → (x, y) 좌표 사전을 반환."""
+    try:
+        import yaml
+        with open(nav_graph_path, 'r') as f:
+            data = yaml.safe_load(f)
+        coords: dict[str, tuple[float, float]] = {}
+        for level in data.get('levels', {}).values():
+            for v in level.get('vertices', []):
+                if len(v) >= 3 and isinstance(v[2], dict):
+                    name = v[2].get('name')
+                    if name:
+                        coords[name] = (float(v[0]), float(v[1]))
+        return coords
+    except Exception as e:
+        logger.warning('nav_graph 파싱 실패: %s', e)
+        return {}
+
+
 # ── 단일 로봇 어댑터 ────────────────────────────────────────────────────────────
 
 class RobotAdapter:
@@ -216,6 +237,9 @@ class PinkyFleetAdapter(Node):
         try:
             fleet_name = fleet_cfg.get('name', 'pinky_fleet')
 
+            # nav_graph에서 waypoint 이름 → 좌표 사전 구축
+            self._waypoint_coords = _parse_waypoint_coords(nav_graph_path)
+
             # FleetConfiguration — from_config_files 방식 (NumPy 호환)
             fleet_config = efc.FleetConfiguration.from_config_files(
                 config_file, nav_graph_path
@@ -238,10 +262,9 @@ class PinkyFleetAdapter(Node):
             # 로봇 등록
             for rid, robot in self._robots.items():
                 robot_name = f'pinky_{rid}'
-                charger = fleet_cfg.get('robots', {}).get(
-                    robot_name, {}).get('charger', 'P1')
-                yaw = float(fleet_cfg.get('robots', {}).get(
-                    robot_name, {}).get('initial_orientation', 0.0))
+                robot_cfg = fleet_cfg.get('robots', {}).get(robot_name, {})
+                charger = robot_cfg.get('charger', 'P1')
+                yaw = float(robot_cfg.get('initial_orientation', 1.5708))
                 self._register_robot(rid, robot_name, charger, yaw)
 
         except Exception as e:
@@ -254,19 +277,21 @@ class PinkyFleetAdapter(Node):
     ) -> None:
         import numpy as np
         robot = self._robots[robot_id]
-        graph = self._easy_fleet  # fleet에서 그래프 참조 불가 → charger 위치는 0,0으로 시작
 
-        # 초기 위치: 충전소 이름으로 waypoint 위치 가져오기
-        nav_graph = None
-        try:
-            nav_graph = self._adapter  # adapter에서 graph 접근 불가
-        except Exception:
-            pass
+        # nav_graph에서 충전소 waypoint 좌표 조회
+        coords = self._waypoint_coords.get(charger)
+        if coords is None:
+            self.get_logger().warning(
+                f'충전소 waypoint "{charger}" 를 nav_graph에서 찾지 못함 — (0,0) 사용')
+            init_x, init_y = 0.0, 0.0
+        else:
+            init_x, init_y = coords
+            self.get_logger().info(
+                f'[{robot_name}] 초기 위치: {charger} = ({init_x:.3f}, {init_y:.3f})')
 
-        # 초기 상태는 (0,0)에서 시작, 첫 status 수신 시 업데이트됨
         state = efc.RobotState(
             map='L1',
-            position=np.array([0.0, 0.0, initial_yaw]),
+            position=np.array([init_x, init_y, initial_yaw]),
             battery_soc=1.0,
         )
         robot_config = efc.RobotConfiguration(compatible_chargers=[charger])
