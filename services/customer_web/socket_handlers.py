@@ -69,9 +69,10 @@ def register_handlers(socketio, control_clients: dict, llm_cfg: dict):
 
     @socketio.on("return")
     def on_return(data=None):
+        """[쇼핑 종료] 버튼 → control_service에 RETURNING 요청."""
         robot_id, cc = _get_client()
         if cc:
-            cc.send({"cmd": "mode", "robot_id": robot_id, "value": "RETURNING"})
+            cc.send({"cmd": "return", "robot_id": robot_id})
 
     # ── 상품 안내 ──────────────────────────────────────────────
 
@@ -122,34 +123,6 @@ def register_handlers(socketio, control_clients: dict, llm_cfg: dict):
             logger.info("qr_scan: robot_id=%s data=%s", robot_id, qr_data[:100])
             cc.send({"cmd": "qr_scan", "robot_id": robot_id, "qr_data": qr_data})
 
-    # ── 인형 등록 확인 ─────────────────────────────────────────────
-
-    @socketio.on("registration_confirm")
-    def on_registration_confirm(data):
-        """사용자가 "이 사람이 당신이 맞나요?" 에서 [확인]을 클릭.
-
-        data: {"bbox": {...}}
-        Pi의 DollDetector.confirm_registration() 호출로 이어짐.
-        """
-        robot_id, cc = _get_client()
-        if cc:
-            logger.info("registration_confirm 요청 (robot_id=%s)", robot_id)
-            cc.send({
-                "cmd": "registration_confirm",
-                "robot_id": robot_id,
-                "bbox": data.get("bbox", {}),
-            })
-
-    # ── 인형 등록 시작 ────────────────────────────────────────────
-
-    @socketio.on("enter_registration")
-    def on_enter_registration(data=None):
-        """/register 페이지 접속 시 자동 emit → Pi LCD 카메라 피드 전환."""
-        robot_id, cc = _get_client()
-        if cc:
-            logger.info("enter_registration 요청 (robot_id=%s)", robot_id)
-            cc.send({"cmd": "enter_registration", "robot_id": robot_id})
-
     # ── 시뮬레이션 모드 ───────────────────────────────────────────
 
     @socketio.on("enter_simulation")
@@ -162,20 +135,6 @@ def register_handlers(socketio, control_clients: dict, llm_cfg: dict):
         if cc:
             logger.info("enter_simulation 요청 (robot_id=%s)", robot_id)
             cc.send({"cmd": "enter_simulation", "robot_id": robot_id})
-
-    # ── 장바구니 수량 변경 ─────────────────────────────────────
-
-    @socketio.on("update_quantity")
-    def on_update_quantity(data):
-        """{"item_id": N, "quantity": N}"""
-        item_id  = data.get("item_id")  if isinstance(data, dict) else None
-        quantity = data.get("quantity") if isinstance(data, dict) else None
-        if item_id is None or quantity is None:
-            return
-        robot_id, cc = _get_client()
-        if cc:
-            cc.send({"cmd": "update_quantity", "robot_id": robot_id,
-                     "item_id": item_id, "quantity": quantity})
 
     # ── 자연어 상품 검색 ───────────────────────────────────────
 

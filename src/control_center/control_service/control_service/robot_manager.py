@@ -203,8 +203,12 @@ class RobotManager:
                 logger.warning('publish_init_pose not wired; init_pose dropped for robot=%s',
                                robot_id)
 
-        elif cmd in ('mode', 'resume_tracking', 'force_terminate',
-                     'staff_resolved', 'navigate_to', 'start_session'):
+        elif cmd in ('mode', 'resume_tracking', 'navigate_to', 'start_session'):
+            self._relay_to_pi(robot_id, payload)
+
+        elif cmd in ('force_terminate', 'staff_resolved'):
+            # 세션을 강제 종료하거나 잠금 해제 처리 시, 다음 로그인에 장바구니가 남지 않도록 정리한다.
+            self._clear_active_cart(robot_id, reason=cmd)
             self._relay_to_pi(robot_id, payload)
 
         else:
@@ -238,6 +242,9 @@ class RobotManager:
         elif cmd in ('mode', 'resume_tracking',
                      'delete_item', 'start_session', 'enter_simulation',
                      'return', 'registration_confirm', 'enter_registration'):
+            if cmd == 'return':
+                # 쇼핑 종료: 장바구니를 비우고 UI에 즉시 반영 (다음 로그인에 남지 않게)
+                self._clear_active_cart(robot_id, reason='return')
             self._relay_to_pi(robot_id, payload)
         else:
             logger.warning('Unknown web cmd=%s', cmd)
@@ -329,6 +336,24 @@ class RobotManager:
             'quantity': r.get('quantity', 1),
             'is_paid':  bool(r['is_paid']),
         } for r in rows]
+
+    def _clear_active_cart(self, robot_id: str, reason: str) -> None:
+        """해당 로봇의 활성 세션 장바구니를 비우고 웹에 empty cart push."""
+        try:
+            session = db.get_active_session_by_robot(robot_id)
+            if not session:
+                return
+            cart = db.get_cart_by_session(session['session_id'])
+            if not cart:
+                return
+            db.delete_cart_items(cart['cart_id'])
+            db.log_event(robot_id, 'CART_CLEARED', session.get('user_id'),
+                         detail=f'reason={reason}')
+            # 브라우저 장바구니 즉시 비우기
+            self._push_web(robot_id, {'type': 'cart', 'items': []})
+            logger.info('Cleared cart for robot=%s (reason=%s)', robot_id, reason)
+        except Exception:
+            logger.exception('Failed to clear cart for robot=%s (reason=%s)', robot_id, reason)
 
     # ──────────────────────────────────────────
     # Bbox update (from camera_stream / AI server)

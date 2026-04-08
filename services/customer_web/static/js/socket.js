@@ -273,6 +273,7 @@ let _qrStream = null;      // MediaStream (시뮬레이션 모드)
 let _qrAnimId = null;       // requestAnimationFrame ID
 let _qrLastScanned = "";    // 중복 스캔 방지
 let _qrVideoHealthTimer = null;
+let _qrCloseAfterFirstScan = true; // 첫 스캔 후 자동 닫기
 
 function openQrPanel() {
   const overlay = document.getElementById("qr-overlay");
@@ -403,7 +404,15 @@ function _onQrDecoded(data) {
   socket.emit("qr_scan", { data: data });
   // 타임아웃 리셋 (활동 감지)
   _resetQrTimeout();
-  // 1.5초 후 다시 스캔 허용
+
+  // 기본 동작: 첫 스캔이 성공하면 바로 닫아 중복 인식을 막는다.
+  if (_qrCloseAfterFirstScan) {
+    // UI 피드백이 살짝 보이도록 짧게 지연 후 닫기
+    setTimeout(() => closeQrPanel(), 350);
+    return;
+  }
+
+  // (옵션) 여러 개 연속 스캔을 허용할 때만 다시 스캔 허용
   setTimeout(() => { _qrLastScanned = ""; }, 1500);
 }
 
@@ -448,7 +457,9 @@ function requestReturn() {
   const ok = confirm(msg);
   if (!ok) return;
   socket.emit("return", {});
-  sessionEnd();
+  // return 이벤트가 control_service까지 전달되기 전에 페이지가 이동하면 누락될 수 있어
+  // 아주 짧게 지연 후 로그아웃/리다이렉트한다.
+  setTimeout(() => sessionEnd(), 200);
 }
 
 // ── STT (Web Speech API) ───────────────────────────────────────
