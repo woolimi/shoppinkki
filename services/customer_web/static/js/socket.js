@@ -30,6 +30,9 @@ let followDisabled = false;
 // 도착한 구역명 캐시
 let arrivedZoneName = "";
 
+// control_service TCP 연결 상태 (customer_web ↔ control_service)
+window.CONTROL_CONNECTED = false;
+
 // ── 수신 이벤트 핸들러 ─────────────────────────────────────────
 
 socket.on("connect", () => {
@@ -44,6 +47,7 @@ socket.on("control_connected", (data) => {
   const bar = document.getElementById("ctrl-status");
   if (!bar) return;
   bar.textContent = data.connected ? "" : "⚠ 서버 연결 중...";
+  window.CONTROL_CONNECTED = !!data.connected;
 });
 
 // 내 로봇 메시지인지 확인 (다른 로봇 status/cart 무시)

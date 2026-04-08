@@ -64,6 +64,7 @@ function updateCart(items) {
 
       const deleteBtn = document.createElement("button");
       deleteBtn.className = "btn-delete";
+      deleteBtn.type = "button";
       deleteBtn.disabled = true;
       deleteBtn.setAttribute("aria-label", "삭제 불가 (결제완료)");
       deleteBtn.textContent = "✕";
@@ -76,6 +77,7 @@ function updateCart(items) {
 
       const deleteBtn = document.createElement("button");
       deleteBtn.className = "btn-delete";
+      deleteBtn.type = "button";
       deleteBtn.setAttribute("aria-label", `${item.name} 삭제`);
       deleteBtn.textContent = "✕";
       deleteBtn.addEventListener("click", () => _onDeleteClick(item.id, li));
@@ -103,8 +105,9 @@ function _buildQtyControl(itemId, qty, disabled) {
 
   const btnMinus = document.createElement("button");
   btnMinus.className = "btn-qty";
+  btnMinus.type = "button";
   btnMinus.textContent = "−";
-  btnMinus.disabled = disabled || qty <= 1;
+  btnMinus.disabled = disabled;
   btnMinus.setAttribute("aria-label", "수량 감소");
 
   const valueSpan = document.createElement("span");
@@ -113,6 +116,7 @@ function _buildQtyControl(itemId, qty, disabled) {
 
   const btnPlus = document.createElement("button");
   btnPlus.className = "btn-qty";
+  btnPlus.type = "button";
   btnPlus.textContent = "+";
   btnPlus.disabled = disabled;
   btnPlus.setAttribute("aria-label", "수량 증가");
@@ -120,7 +124,11 @@ function _buildQtyControl(itemId, qty, disabled) {
   if (!disabled) {
     btnMinus.addEventListener("click", () => {
       const newQty = (parseInt(valueSpan.textContent, 10) || 1) - 1;
-      if (newQty < 1) return;
+      // 수량이 1에서 더 내려가면 품목을 삭제한다.
+      if (newQty < 1) {
+        deleteItem(itemId);
+        return;
+      }
       _emitUpdateQuantity(itemId, newQty);
     });
     btnPlus.addEventListener("click", () => {
@@ -154,11 +162,13 @@ function _onDeleteClick(itemId, li) {
 
   const btnDel = document.createElement("button");
   btnDel.className = "btn-confirm-del";
+  btnDel.type = "button";
   btnDel.textContent = "삭제";
   btnDel.addEventListener("click", () => deleteItem(itemId));
 
   const btnCancel = document.createElement("button");
   btnCancel.className = "btn-confirm-cancel";
+  btnCancel.type = "button";
   btnCancel.textContent = "취소";
   btnCancel.addEventListener("click", () => updateCart(_currentItems));
 
@@ -222,6 +232,14 @@ function hasUnpaidItems() {
  */
 function deleteItem(itemId) {
   if (typeof socket !== "undefined" && socket) {
+    if (!socket.connected) {
+      showToast("웹 연결이 끊겼습니다. 새로고침 후 다시 시도해주세요.");
+      return;
+    }
+    if (window.CONTROL_CONNECTED === false) {
+      showToast("서버 연결 중입니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
     socket.emit("delete_item", { item_id: itemId });
   }
 }
@@ -234,6 +252,14 @@ function deleteItem(itemId) {
 function _emitUpdateQuantity(itemId, newQty) {
   if (newQty < 1) return;
   if (typeof socket !== "undefined" && socket) {
+    if (!socket.connected) {
+      showToast("웹 연결이 끊겼습니다. 새로고침 후 다시 시도해주세요.");
+      return;
+    }
+    if (window.CONTROL_CONNECTED === false) {
+      showToast("서버 연결 중입니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
     socket.emit("update_quantity", { item_id: itemId, quantity: newQty });
   }
 }

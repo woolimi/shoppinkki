@@ -256,6 +256,8 @@ class RobotManager:
             self._handle_qr_scan(robot_id, payload)
         elif cmd == 'update_quantity':
             self._handle_update_quantity(robot_id, payload)
+        elif cmd == 'delete_item':
+            self._handle_delete_item(robot_id, payload)
         elif cmd == 'navigate_to':
             zone_id = payload.get('zone_id')
             if zone_id is not None and 'x' not in payload:
@@ -268,7 +270,7 @@ class RobotManager:
                     logger.warning('navigate_to: zone_id=%s not found in DB', zone_id)
             self._relay_to_pi(robot_id, payload)
         elif cmd in ('mode', 'resume_tracking',
-                     'delete_item', 'start_session', 'enter_simulation',
+                     'start_session', 'enter_simulation',
                      'return', 'registration_confirm', 'enter_registration'):
             if cmd == 'return':
                 # 쇼핑 종료: 장바구니를 비우고 UI에 즉시 반영 (다음 로그인에 남지 않게)
@@ -342,6 +344,24 @@ class RobotManager:
         if item_id is None or quantity is None:
             return
         db.update_cart_item_quantity(item_id, int(quantity))
+        session = db.get_active_session_by_robot(robot_id)
+        if not session:
+            return
+        cart = db.get_cart_by_session(session['session_id'])
+        if not cart:
+            return
+        items = db.get_cart_items(cart['cart_id'])
+        self._push_web(robot_id, {
+            'type': 'cart',
+            'items': self._format_cart_items(items),
+        })
+
+    def _handle_delete_item(self, robot_id: str, payload: dict) -> None:
+        """장바구니 항목 삭제."""
+        item_id = payload.get('item_id')
+        if item_id is None:
+            return
+        db.delete_cart_item(int(item_id))
         session = db.get_active_session_by_robot(robot_id)
         if not session:
             return
