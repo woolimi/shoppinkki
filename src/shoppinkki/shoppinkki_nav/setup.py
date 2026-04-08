@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 import os
 from glob import glob
 
-package_name = 'shoppinkki-nav'
+package_name = 'shoppinkki_nav'
 
 setup(
     name=package_name,

@@ -48,6 +48,12 @@ try:
 except ImportError:
     _PERCEPTION_AVAILABLE = False
 
+try:
+    from pinkylib import Camera as PinkyCamera
+    _PINKYLIB_AVAILABLE = True
+except ImportError:
+    _PINKYLIB_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 # Robot ID is read from the environment variable ROBOT_ID (default '54')
@@ -367,13 +373,23 @@ class ShoppinkiMainNode(Node):
             self.get_logger().warning('cv2 없음 — 카메라 루프 비활성화')
             return
 
-        cam_index = int(os.environ.get('CAMERA_INDEX', '0'))
-        cap = cv2.VideoCapture(cam_index)
-        if not cap.isOpened():
-            self.get_logger().warning(f'카메라({cam_index}) 열기 실패 — 카메라 루프 종료')
-            return
+        if not _PINKYLIB_AVAILABLE:
+            self.get_logger().warning('pinkylib 없음 — camera loop를 VideoCapture(0)으로 전환 시도')
+            cap = cv2.VideoCapture(int(os.environ.get('CAMERA_INDEX', '0')))
+        else:
+            try:
+                cap = PinkyCamera()
+                cap.start()
+                self.get_logger().info('pinkylib.Camera started')
+            except Exception as e:
+                self.get_logger().warning(f'pinkylib.Camera 시작 실패: {e} — VideoCapture(0)으로 전환')
+                cap = cv2.VideoCapture(int(os.environ.get('CAMERA_INDEX', '0')))
 
-        self.get_logger().info(f'카메라 루프 시작 (index={cam_index})')
+        if not cap.isOpened() if not _PINKYLIB_AVAILABLE or isinstance(cap, cv2.VideoCapture) else False:
+             self.get_logger().warning(f'카메라 열기 실패 — 카메라 루프 종료')
+             return
+
+        self.get_logger().info(f'카메라 루프 시작')
 
         _CAM_STATES = {'IDLE', 'TRACKING', 'TRACKING_CHECKOUT'}
 
@@ -385,10 +401,18 @@ class ShoppinkiMainNode(Node):
                 time.sleep(0.2)
                 continue
 
-            ret, frame = cap.read()
-            if not ret:
-                time.sleep(0.05)
-                continue
+            if _PINKYLIB_AVAILABLE and isinstance(cap, PinkyCamera):
+                frame_rgb = cap.get_frame()
+                if frame_rgb is None:
+                    time.sleep(0.05)
+                    continue
+                # BGR로 변환 (기존 시스템 스펙)
+                frame = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+            else:
+                ret, frame = cap.read()
+                if not ret:
+                    time.sleep(0.05)
+                    continue
 
             self._cam_frame = frame
 
@@ -420,7 +444,10 @@ class ShoppinkiMainNode(Node):
                 if self.doll_detector is not None:
                     self.doll_detector.run(frame)
 
-        cap.release()
+        if _PINKYLIB_AVAILABLE and isinstance(cap, PinkyCamera):
+            cap.close()
+        elif hasattr(cap, 'release'):
+            cap.release()
 
     # ──────────────────────────────────────────
     # 인형 등록 확인 콜백
