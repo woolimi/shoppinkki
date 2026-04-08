@@ -227,8 +227,8 @@ class MapWidget(QLabel):
         if self._scale < 1:
             self._scale = 1
 
-        # 180° 회전하여 표시
-        rotated = pix.transformed(QTransform().rotate(180))
+        # 270° CW (= 90° CCW) 회전하여 가로 맵으로 표시
+        rotated = pix.transformed(QTransform().rotate(270))
         self._base_pixmap = rotated
         self.setFixedSize(rotated.size())
 
@@ -238,24 +238,24 @@ class MapWidget(QLabel):
     #   col_orig = (x - origin_x) / resolution * scale
     #   row_orig = img_h - (y - origin_y) / resolution * scale
     #
-    # 180° 회전 후:
-    #   col_rot = img_w - col_orig
-    #   row_rot = img_h - row_orig = (y - origin_y) / resolution * scale
+    # 270° CW 회전 후 (90° CCW):
+    #   col_rot = row_orig = img_h - (y - origin_y) / resolution * scale
+    #   row_rot = img_w - col_orig = img_w - (x - origin_x) / resolution * scale
 
     def _world_to_pixel(self, x: float, y: float) -> tuple[int, int]:
-        """월드 좌표 → 180° 회전된 PNG 픽셀 좌표."""
+        """월드 좌표 → 270° CW 회전된 PNG 픽셀 좌표."""
         s = self._scale
         r = self._resolution
-        px = int(self._img_w - (x - self._origin_x) / r * s)
-        py = int((y - self._origin_y) / r * s)
+        px = int(self._img_h - (y - self._origin_y) / r * s)
+        py = int(self._img_w - (x - self._origin_x) / r * s)
         return px, py
 
     def _pixel_to_world(self, px: int, py: int) -> tuple[float, float]:
-        """180° 회전된 PNG 픽셀 좌표 → 월드 좌표."""
+        """270° CW 회전된 PNG 픽셀 좌표 → 월드 좌표."""
         s = self._scale
         r = self._resolution
-        x = self._origin_x + (self._img_w - px) / s * r
-        y = self._origin_y + py / s * r
+        x = self._origin_x + (self._img_w - py) / s * r
+        y = self._origin_y + (self._img_h - px) / s * r
         return x, y
 
     # ── 공개 API ────────────────────────────────────
