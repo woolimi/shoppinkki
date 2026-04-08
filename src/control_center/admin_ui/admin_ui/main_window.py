@@ -31,8 +31,8 @@ TCP 메시지 처리 (message_received 시그널 연결):
     admin_goto_rejected → QMessageBox.warning()
 
 맵 클릭 → admin_goto 흐름:
-    map_widget.map_clicked → pending_goto 저장
-    robot_card [이동 명령] 클릭 → send admin_goto
+    robot_card [이동 명령] 클릭 → goto_mode_activated(robot_id) emit
+    map_widget.map_clicked → 대기 중인 로봇에 admin_goto 즉시 전송
 """
 
 import time
@@ -88,8 +88,8 @@ class MainWindow(QMainWindow):
         self._last_status_time: dict[str, float] = {}
         # 로봇별 최근 상태 캐시
         self._robot_states: dict[str, dict] = {}
-        # 맵 클릭으로 저장된 goto 좌표 (모든 로봇 공용 대기)
-        self._pending_goto: tuple[float, float] | None = None
+        # 맵 클릭 대기 중인 로봇 ID (None = 대기 없음)
+        self._goto_pending_robot: str | None = None
         # 로봇 상세 다이얼로그 (robot_id → dialog)
         self._detail_dialogs: dict[str, RobotDetailDialog] = {}
         self._rest_base = f'http://{rest_host}:{rest_port}'
@@ -176,6 +176,7 @@ class MainWindow(QMainWindow):
             card = RobotCard(rid)
             card.command_requested.connect(self._on_command_requested)
             card.card_clicked.connect(self._on_card_clicked)
+            card.goto_mode_activated.connect(self._on_goto_mode_activated)
             card_layout.addWidget(card)
             self._robot_cards[rid] = card
         card_layout.addStretch()
@@ -305,15 +306,54 @@ class MainWindow(QMainWindow):
     # 맵 클릭 → admin_goto 흐름
     # ------------------------------------------------------------------
 
-    def _on_map_clicked(self, x: float, y: float):
-        """맵 클릭 좌표를 모든 IDLE 로봇 카드에 전달."""
-        self._pending_goto = (x, y)
+    def _on_goto_mode_activated(self, robot_id: str):
+        """[이동 명령] 버튼 클릭 — 맵 클릭 대기 모드 진입/취소."""
+        if not robot_id:
+            # 취소
+            self._goto_pending_robot = None
+            self.statusBar().showMessage('이동 명령 취소')
+            return
+
+        # 다른 카드의 대기 상태 해제
         for rid, card in self._robot_cards.items():
-            if card.current_mode == 'IDLE':
-                card.set_goto_coords(x, y)
+            if rid != robot_id:
+                card.set_goto_pending(False)
+
+        self._goto_pending_robot = robot_id
         self.statusBar().showMessage(
-            f'맵 클릭: 월드 좌표 ({x:.3f}, {y:.3f}) — IDLE 로봇 카드에서 [이동 명령] 클릭'
+            f'Robot #{robot_id} — 맵에서 목적지를 클릭하세요'
         )
+
+    def _on_map_clicked(self, x: float, y: float):
+        """맵 클릭: 대기 중인 로봇에 admin_goto 즉시 전송."""
+        rid = self._goto_pending_robot
+        if rid is None:
+            return
+
+        state = self._robot_states.get(rid, {})
+        if state.get('mode') != 'IDLE':
+            self.statusBar().showMessage(
+                f'Robot #{rid} 이 IDLE 상태가 아닙니다 (현재: {state.get("mode")})'
+            )
+            return
+
+        payload = {
+            'cmd': 'admin_goto',
+            'robot_id': rid,
+            'x': round(x, 4),
+            'y': round(y, 4),
+            'theta': 0.0,
+        }
+        self._tcp.send(payload)
+        self._map_widget.set_goto_marker(x, y)
+        self.statusBar().showMessage(
+            f'Robot #{rid} → admin_goto ({x:.3f}, {y:.3f}) 전송'
+        )
+
+        # 대기 상태 해제
+        self._goto_pending_robot = None
+        if rid in self._robot_cards:
+            self._robot_cards[rid].set_goto_pending(False)
 
     # ------------------------------------------------------------------
     # 로봇 카드 클릭 → 상세 다이얼로그
@@ -346,9 +386,6 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(
                 f"Robot #{robot_id} → {payload.get('cmd', '?')} 전송 완료"
             )
-        # goto 마커 초기화
-        if payload.get('cmd') == 'admin_goto':
-            self._map_widget.set_goto_marker(payload['x'], payload['y'])
 
     def _on_resolve_requested(self, robot_id: str):
         payload = {'cmd': 'staff_resolved', 'robot_id': robot_id}

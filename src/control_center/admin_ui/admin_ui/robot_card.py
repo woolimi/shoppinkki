@@ -27,12 +27,15 @@
 
 관제 명령 버튼:
     [강제 종료] → force_terminate  (CHARGING·OFFLINE·HALTED·LOCKED 제외)
-    [이동 명령] → admin_goto       (IDLE만, 맵 클릭 후 활성화)
+    [이동 명령] → goto_mode_activated 시그널 emit (IDLE만)
+                  버튼 클릭 → 맵 클릭 대기 모드 진입/취소 토글
+                  맵 클릭은 MainWindow에서 처리하여 admin_goto 전송
     [잠금 해제] → staff_resolved   (is_locked_return=True 또는 HALTED)
     [위치 초기화] → init_pose      (CHARGING·IDLE만, Gazebo/AMCL 초기 위치 설정)
 
 시그널:
     command_requested = pyqtSignal(str, dict)  # robot_id, payload
+    goto_mode_activated = pyqtSignal(str)       # robot_id (빈 문자열 = 취소)
 """
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -76,7 +79,8 @@ class RobotCard(QFrame):
     """로봇 카드 위젯."""
 
     command_requested = pyqtSignal(str, dict)
-    card_clicked = pyqtSignal(str)  # robot_id
+    card_clicked = pyqtSignal(str)       # robot_id
+    goto_mode_activated = pyqtSignal(str)  # robot_id or '' (cancel)
 
     def __init__(self, robot_id: str, parent=None):
         super().__init__(parent)
@@ -84,7 +88,6 @@ class RobotCard(QFrame):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._current_state: dict = {}
         self._goto_pending = False  # 맵 클릭 대기 상태
-        self._pending_goto_coords: tuple[float, float] | None = None
 
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setFrameShadow(QFrame.Shadow.Raised)
@@ -230,18 +233,11 @@ class RobotCard(QFrame):
         """맵 클릭 대기 상태 설정."""
         self._goto_pending = pending
         if pending:
-            self._btn_admin_goto.setText('클릭 대기...')
+            self._btn_admin_goto.setText('취소')
             self._btn_admin_goto.setStyleSheet('color: #e67e22; font-weight: bold;')
         else:
             self._btn_admin_goto.setText('이동 명령')
             self._btn_admin_goto.setStyleSheet('')
-        self._update_button_states()
-
-    def set_goto_coords(self, x: float, y: float):
-        """맵 클릭으로 좌표 저장."""
-        self._pending_goto_coords = (x, y)
-        self._goto_pending = False
-        self._btn_admin_goto.setText('이동 명령')
         self._update_button_states()
 
     def _update_button_states(self):
@@ -252,10 +248,8 @@ class RobotCard(QFrame):
         self._btn_resume.setEnabled(mode in _RESUME_MODES)
         self._btn_returning.setEnabled(mode in _RETURNING_MODES)
         self._btn_force_terminate.setEnabled(mode not in _FORCE_TERMINATE_DISABLED)
-        # admin_goto: IDLE + 좌표 준비됨
-        self._btn_admin_goto.setEnabled(
-            mode == 'IDLE' and self._pending_goto_coords is not None
-        )
+        # admin_goto: IDLE이면 항상 활성 (맵 클릭 대기 모드 진입/취소)
+        self._btn_admin_goto.setEnabled(mode == 'IDLE')
         # staff_resolved: HALTED 또는 is_locked_return
         self._btn_staff_resolved.setEnabled(
             mode == 'HALTED' or is_locked_return
@@ -286,18 +280,18 @@ class RobotCard(QFrame):
             self._send_cmd({'cmd': 'force_terminate', 'robot_id': self._robot_id})
 
     def _on_admin_goto(self):
-        if self._pending_goto_coords is None:
-            return
-        x, y = self._pending_goto_coords
-        self._send_cmd({
-            'cmd': 'admin_goto',
-            'robot_id': self._robot_id,
-            'x': x,
-            'y': y,
-            'theta': 0.0,
-        })
-        self._pending_goto_coords = None
-        self._update_button_states()
+        if self._goto_pending:
+            # 이미 대기 중 → 취소
+            self._goto_pending = False
+            self._btn_admin_goto.setText('이동 명령')
+            self._btn_admin_goto.setStyleSheet('')
+            self.goto_mode_activated.emit('')
+        else:
+            # 대기 모드 진입
+            self._goto_pending = True
+            self._btn_admin_goto.setText('취소')
+            self._btn_admin_goto.setStyleSheet('color: #e67e22; font-weight: bold;')
+            self.goto_mode_activated.emit(self._robot_id)
 
     def _on_staff_resolved(self):
         reply = QMessageBox.question(
