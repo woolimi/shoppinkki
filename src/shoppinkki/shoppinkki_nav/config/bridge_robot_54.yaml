@@ -1,11 +1,15 @@
 # ROS-Gazebo 브리지 — 로봇 54번 (namespace: robot_54/)
 # Gazebo topic 이름은 URDF namespace에 의해 자동으로 robot_54/ 프리픽스가 붙음
 
-- ros_topic_name: "clock"
+- ros_topic_name: "/clock"
   gz_topic_name: "clock"
   ros_type_name: "rosgraph_msgs/msg/Clock"
   gz_type_name: "gz.msgs.Clock"
   direction: GZ_TO_ROS
+  publisher_qos:
+    reliability: reliable
+    durability: volatile
+    depth: 10
 
 - ros_topic_name: "/tf"
   gz_topic_name: "robot_54/tf"

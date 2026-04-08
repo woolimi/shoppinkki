@@ -339,7 +339,7 @@ class ShoppinkiMainNode(Node):
         self.sm.enter_tracking()
 
     def _on_admin_goto(self, x: float, y: float, theta: float) -> None:
-        self.get_logger().info('admin_goto: (%.2f, %.2f, %.2f)', x, y, theta)
+        self.get_logger().info(f'admin_goto: ({x:.2f}, {y:.2f}, {theta:.2f})')
         if self._nav2_client is None:
             self.get_logger().warning('admin_goto: nav2_msgs not available')
             return
@@ -357,7 +357,7 @@ class ShoppinkiMainNode(Node):
         goal_msg.pose.pose.orientation.w = math.cos(theta / 2.0)
 
         self._nav2_client.send_goal_async(goal_msg)
-        self.get_logger().info('admin_goto: Nav2 goal sent → (%.2f, %.2f)', x, y)
+        self.get_logger().info(f'admin_goto: Nav2 goal sent → ({x:.2f}, {y:.2f})')
 
     def _on_arrived(self) -> None:
         self.get_logger().info('Arrived at destination')
