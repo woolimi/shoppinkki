@@ -15,7 +15,7 @@ customer_web :8501 ──[REST :8000]──▶ LLM AI (채널 D)
     │  TCP :8080 (채널 C)
     ▼
 control_service :8080/:8081
-    ├── [TCP :3306]  ──▶ MySQL        (채널 E)
+    ├── [TCP :5432]  ──▶ PostgreSQL   (채널 E)
     ├── [TCP :5005]  ──▶ YOLO AI      (채널 F)
     └── [ROS2 DDS]  ◀▶  Pi (shoppinkki_core) (채널 G)
                               │
@@ -240,13 +240,13 @@ JSON 개행 구분. 연결 후 반드시 등록 메시지 먼저 전송.
 
 ---
 
-## 6. 채널 E — control_service ↔ MySQL (:3306)
+## 6. 채널 E — control_service ↔ PostgreSQL (:5432)
 
-MySQL 독립 프로세스. `mysql-connector-python`으로 접속.
+PostgreSQL 독립 프로세스. `psycopg2` 커넥션 풀로 접속.
 
-환경 변수: `MYSQL_HOST` / `MYSQL_PORT` / `MYSQL_USER` / `MYSQL_PASSWORD` / `MYSQL_DATABASE`
+환경 변수: `PG_HOST` / `PG_PORT` / `PG_USER` / `PG_PASSWORD` / `PG_DATABASE`
 
-플레이스홀더: `%s`. 항상 `cursor(dictionary=True)` 사용.
+플레이스홀더: `%s`. dict row는 `RealDictCursor` 사용.
 
 스키마 상세: `docs/erd.md`
 
