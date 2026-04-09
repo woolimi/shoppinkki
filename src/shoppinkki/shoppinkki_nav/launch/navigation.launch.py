@@ -52,6 +52,7 @@ def generate_launch_description():
             'map': LaunchConfiguration('map'),
             'params_file': LaunchConfiguration('params_file'),
             'use_sim_time': LaunchConfiguration('use_sim_time'),
+            'use_collision_monitor': 'False',
         }.items(),
     )
 
