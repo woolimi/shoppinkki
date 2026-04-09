@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>System Requirements Checklist</title>
+  <style>
+    :root {
+      --bg: #f4f7ff;
+      --panel: #ffffff;
+      --panel-2: #eef3ff;
+      --text: #1c2748;
+      --muted: #66739a;
+      --accent: #3b82f6;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --line: #d9e2ff;
+      --chip: #e8efff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 24px;
+      background: radial-gradient(circle at 20% -10%, #dce8ff 0%, var(--bg) 50%);
+      color: var(--text);
+      font-family: "Pretendard", "Noto Sans KR", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: grid;
+      gap: 16px;
+    }
+
+    .card {
+      background: linear-gradient(180deg, var(--panel) 0%, #fafcff 100%);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 8px 20px rgba(41, 77, 160, 0.08);
+    }
+
+    h1, h2, h3 {
+      margin: 0;
+    }
+
+    .title {
+      display: flex;
+      gap: 10px;
+      align-items: baseline;
+      flex-wrap: wrap;
+    }
+
+    .title small {
+      color: var(--muted);
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(120px, 1fr));
+      gap: 10px;
+    }
+
+    .stat {
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+
+    .stat .k {
+      color: var(--muted);
+      font-size: 12px;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .stat .v {
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .bar {
+      height: 10px;
+      border-radius: 999px;
+      background: #edf3ff;
+      border: 1px solid var(--line);
+      overflow: hidden;
+      margin-top: 12px;
+    }
+
+    .bar > div {
+      height: 100%;
+      width: 0;
+      background: linear-gradient(90deg, var(--accent), #88e6ff);
+      transition: width 0.2s ease;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr auto auto auto;
+      gap: 10px;
+      align-items: center;
+    }
+
+    input[type="search"] {
+      width: 100%;
+      background: #fff;
+      border: 1px solid var(--line);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 12px;
+      outline: none;
+    }
+
+    input[type="search"]:focus {
+      border-color: #98b8ff;
+      box-shadow: 0 0 0 3px #e4eeff;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      background: var(--chip);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 12px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      filter: brightness(1.08);
+    }
+
+    .section {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-top: 12px;
+    }
+
+    .section > summary {
+      list-style: none;
+      background: #f3f7ff;
+      cursor: pointer;
+      padding: 12px 14px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .section > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .chip {
+      background: var(--chip);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: 12px;
+      padding: 3px 9px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .items {
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+      background: #fbfdff;
+    }
+
+    .item {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 10px;
+      align-items: start;
+      border: 1px solid #dbe5ff;
+      border-radius: 10px;
+      padding: 10px;
+      background: #ffffff;
+    }
+
+    .item label {
+      cursor: pointer;
+      line-height: 1.45;
+    }
+
+    .item .id {
+      display: inline-block;
+      font-weight: 700;
+      color: #2e5ac0;
+      margin-right: 8px;
+    }
+
+    .item .meta {
+      display: inline-block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-left: 6px;
+    }
+
+    .done .id,
+    .done .desc {
+      color: #8a96b8;
+      text-decoration: line-through;
+      text-decoration-thickness: 1px;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 8px;
+    }
+
+    .error {
+      color: #ffd0d0;
+      background: #411f2a;
+      border: 1px solid #733549;
+      border-radius: 10px;
+      padding: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="card">
+      <div class="title">
+        <h1>System Requirements Checklist</h1>
+        <small>`docs/system_requirements.md` 기반 자동 생성</small>
+      </div>
+      <div class="status" id="sourceStatus">문서를 읽는 중...</div>
+    </section>
+
+    <section class="card">
+      <div class="stats">
+        <div class="stat"><span class="k">전체 SR</span><span class="v" id="statTotal">0</span></div>
+        <div class="stat"><span class="k">완료</span><span class="v" id="statDone">0</span></div>
+        <div class="stat"><span class="k">미완료</span><span class="v" id="statTodo">0</span></div>
+        <div class="stat"><span class="k">진행률</span><span class="v" id="statRate">0%</span></div>
+      </div>
+      <div class="bar"><div id="progressBar"></div></div>
+    </section>
+
+    <section class="card">
+      <div class="controls">
+        <input id="search" type="search" placeholder="SR ID 또는 설명으로 검색 (예: SR-32, 결제, LOCKED)" />
+        <button id="btnToggleDone" type="button">완료 항목만 보기</button>
+        <button id="btnDownload" type="button">저장하기</button>
+        <button id="btnReset" type="button">체크 초기화</button>
+      </div>
+      <div id="app"></div>
+    </section>
+  </div>
+
+  <script>
+    const SOURCE_MD = "./system_requirements.md";
+    const STORAGE_KEY = "system-requirements-check-state:v1";
+    const state = {
+      checked: {},
+      search: "",
+      onlyDone: false,
+      sections: [],
+      sourceMarkdown: ""
+    };
+
+    const el = {
+      app: document.getElementById("app"),
+      sourceStatus: document.getElementById("sourceStatus"),
+      statTotal: document.getElementById("statTotal"),
+      statDone: document.getElementById("statDone"),
+      statTodo: document.getElementById("statTodo"),
+      statRate: document.getElementById("statRate"),
+      progressBar: document.getElementById("progressBar"),
+      search: document.getElementById("search"),
+      btnToggleDone: document.getElementById("btnToggleDone"),
+      btnDownload: document.getElementById("btnDownload"),
+      btnReset: document.getElementById("btnReset")
+    };
+
+    function escapeHtml(text) {
+      return text
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object" && parsed.checked) {
+            state.checked = parsed.checked;
+          }
+        }
+      } catch (_) {}
+    }
+
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ checked: state.checked }));
+    }
+
+    function parseMarkdown(md) {
+      const lines = md.split(/\r?\n/);
+      const sections = [];
+      let currentSection = null;
+
+      for (const line of lines) {
+        const h3 = line.match(/^###\s+(.+)$/);
+        if (h3) {
+          currentSection = { title: h3[1].trim(), items: [] };
+          sections.push(currentSection);
+          continue;
+        }
+
+        if (!currentSection) {
+          continue;
+        }
+
+        const rowMatch = line.match(/^\|\s*(SR-[0-9A-Za-z-]+)\s*\|\s*([^|]*)\|\s*(.+?)\s*\|$/);
+        if (rowMatch) {
+          const id = rowMatch[1].trim();
+          const ur = rowMatch[2].trim();
+          const desc = rowMatch[3].trim();
+          if (id && desc) {
+            currentSection.items.push({ id, ur, desc });
+          }
+        }
+      }
+
+      return sections.filter((section) => section.items.length > 0);
+    }
+
+    function computeTotals(items) {
+      const total = items.length;
+      const done = items.reduce((acc, item) => acc + (state.checked[item.id] ? 1 : 0), 0);
+      const todo = total - done;
+      const rate = total ? Math.round((done / total) * 100) : 0;
+      return { total, done, todo, rate };
+    }
+
+    function applyStats(allItems) {
+      const { total, done, todo, rate } = computeTotals(allItems);
+      el.statTotal.textContent = String(total);
+      el.statDone.textContent = String(done);
+      el.statTodo.textContent = String(todo);
+      el.statRate.textContent = rate + "%";
+      el.progressBar.style.width = rate + "%";
+    }
+
+    function filterItems(items) {
+      const q = state.search.trim().toLowerCase();
+      return items.filter((item) => {
+        const matchedKeyword = q.length === 0 ||
+          item.id.toLowerCase().includes(q) ||
+          item.desc.toLowerCase().includes(q) ||
+          item.ur.toLowerCase().includes(q);
+        const matchedDone = !state.onlyDone || !!state.checked[item.id];
+        return matchedKeyword && matchedDone;
+      });
+    }
+
+    function render() {
+      const allItems = state.sections.flatMap((s) => s.items);
+      applyStats(allItems);
+
+      const sectionHtml = state.sections.map((section) => {
+        const filtered = filterItems(section.items);
+        const sectionDone = section.items.reduce((acc, item) => acc + (state.checked[item.id] ? 1 : 0), 0);
+
+        if (filtered.length === 0) {
+          return "";
+        }
+
+        const itemHtml = filtered.map((item) => {
+          const checked = !!state.checked[item.id];
+          return `
+            <div class="item ${checked ? "done" : ""}">
+              <input type="checkbox" data-id="${escapeHtml(item.id)}" ${checked ? "checked" : ""} />
+              <label>
+                <span class="id">${escapeHtml(item.id)}</span>
+                <span class="desc">${escapeHtml(item.desc)}</span>
+                <span class="meta">(${escapeHtml(item.ur || "-")})</span>
+              </label>
+            </div>
+          `;
+        }).join("");
+
+        return `
+          <details class="section" open>
+            <summary>
+              <strong>${escapeHtml(section.title)}</strong>
+              <span class="chip">${sectionDone}/${section.items.length} 완료</span>
+            </summary>
+            <div class="items">${itemHtml}</div>
+          </details>
+        `;
+      }).join("");
+
+      el.app.innerHTML = sectionHtml || `<div class="status">검색 조건에 맞는 항목이 없습니다.</div>`;
+      bindCheckboxEvents();
+      el.btnToggleDone.textContent = state.onlyDone ? "전체 항목 보기" : "완료 항목만 보기";
+    }
+
+    function buildDownloadMarkdown() {
+      const allItems = state.sections.flatMap((s) => s.items);
+      const totals = computeTotals(allItems);
+      const now = new Date();
+      const dateText = now.getFullYear() + "-" +
+        String(now.getMonth() + 1).padStart(2, "0") + "-" +
+        String(now.getDate()).padStart(2, "0") + " " +
+        String(now.getHours()).padStart(2, "0") + ":" +
+        String(now.getMinutes()).padStart(2, "0");
+
+      const lines = [];
+      lines.push("# 시스템 요구사항 구현 체크 결과");
+      lines.push("");
+      lines.push("- 원본 문서: `docs/system_requirements.md`");
+      lines.push("- 생성 시각: " + dateText);
+      lines.push("- 전체: " + totals.total + ", 완료: " + totals.done + ", 미완료: " + totals.todo + ", 진행률: " + totals.rate + "%");
+      lines.push("");
+      lines.push("---");
+      lines.push("");
+
+      for (const section of state.sections) {
+        lines.push("## " + section.title);
+        lines.push("");
+        for (const item of section.items) {
+          const mark = state.checked[item.id] ? "x" : " ";
+          const ur = item.ur ? item.ur : "-";
+          lines.push("- [" + mark + "] **" + item.id + "** (" + ur + ") " + item.desc);
+        }
+        lines.push("");
+      }
+
+      lines.push("---");
+      lines.push("");
+      lines.push("## 원본 문서");
+      lines.push("");
+      lines.push("```md");
+      lines.push(state.sourceMarkdown.trimEnd());
+      lines.push("```");
+      lines.push("");
+
+      return lines.join("\n");
+    }
+
+    function downloadMarkdownFile(filename, content) {
+      const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function bindCheckboxEvents() {
+      el.app.querySelectorAll('input[type="checkbox"][data-id]').forEach((checkbox) => {
+        checkbox.addEventListener("change", () => {
+          const id = checkbox.getAttribute("data-id");
+          state.checked[id] = checkbox.checked;
+          saveState();
+          render();
+        });
+      });
+    }
+
+    async function boot() {
+      loadState();
+
+      try {
+        const res = await fetch(SOURCE_MD);
+        if (!res.ok) {
+          throw new Error("문서 로드 실패: " + res.status);
+        }
+        const md = await res.text();
+        state.sourceMarkdown = md;
+        state.sections = parseMarkdown(md);
+        if (state.sections.length === 0) {
+          el.sourceStatus.innerHTML = `<span class="error">SR 테이블을 파싱하지 못했습니다. Markdown 표 형식을 확인해주세요.</span>`;
+        } else {
+          const count = state.sections.flatMap((s) => s.items).length;
+          el.sourceStatus.textContent = "불러온 항목: " + count + "개";
+        }
+      } catch (e) {
+        el.sourceStatus.innerHTML = `<span class="error">` +
+          `system_requirements.md를 불러올 수 없습니다. ` +
+          `파일 탐색기에서 직접 여는 대신 로컬 서버로 열어주세요. ` +
+          `예: docs 폴더에서 python3 -m http.server 8080` +
+          `</span>`;
+      }
+
+      el.search.addEventListener("input", () => {
+        state.search = el.search.value;
+        render();
+      });
+
+      el.btnToggleDone.addEventListener("click", () => {
+        state.onlyDone = !state.onlyDone;
+        render();
+      });
+
+      el.btnDownload.addEventListener("click", () => {
+        if (!state.sourceMarkdown) {
+          window.alert("다운로드할 데이터가 없습니다. 문서를 먼저 불러와주세요.");
+          return;
+        }
+        const content = buildDownloadMarkdown();
+        downloadMarkdownFile("system_requirements.md", content);
+      });
+
+      el.btnReset.addEventListener("click", () => {
+        const ok = window.confirm("모든 체크 상태를 초기화할까요?");
+        if (!ok) return;
+        state.checked = {};
+        saveState();
+        render();
+      });
+
+      render();
+    }
+
+    boot();
+  </script>
+</body>
+</html>
