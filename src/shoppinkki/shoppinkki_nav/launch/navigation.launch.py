@@ -62,6 +62,7 @@ def generate_launch_description():
             'use_sim_time': LaunchConfiguration('use_sim_time'),
             'namespace': namespace,
             'use_namespace': 'true' if namespace else 'false',
+            'use_composition': 'False',
         }.items(),
     )
 
