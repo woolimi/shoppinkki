@@ -148,8 +148,8 @@ class BoundaryMonitor:
                 self.on_pose_update(x, y)
 
             node.create_subscription(
-                PoseWithCovarianceStamped, '/amcl_pose', _pose_cb, 10)
-            logger.info('BoundaryMonitor: subscribed to /amcl_pose')
+                PoseWithCovarianceStamped, 'amcl_pose', _pose_cb, 10)
+            logger.info('BoundaryMonitor: subscribed to amcl_pose')
         except Exception as e:
             logger.warning('BoundaryMonitor: ROS subscription failed: %s', e)
 

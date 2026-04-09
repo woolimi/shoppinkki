@@ -54,7 +54,7 @@ tmux send-keys -t "${SESSION}:bringup" \
 # bringup 안정화 대기 후 실행 (10초)
 tmux new-window -t "${SESSION}" -n "nav"
 tmux send-keys -t "${SESSION}:nav" \
-    "$TMUX_SRC && $ROS_ENV && cd $ROS_WS && sleep 10 && ros2 launch shoppinkki_nav navigation.launch.py" Enter
+    "$TMUX_SRC && $ROS_ENV && export ROBOT_ID=$ROBOT_ID && cd $ROS_WS && sleep 10 && ros2 launch shoppinkki_nav navigation.launch.py" Enter
 
 # 창 2: shoppinkki_core (SM + BT + HW)
 # Nav2 초기화 대기 후 실행 (30초)
