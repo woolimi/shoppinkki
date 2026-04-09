@@ -210,7 +210,8 @@ def index():
     robots = _ctrl_rest("GET", "/robots")
     if robots:
         robot_state = robots.get(str(robot_id))
-        if robot_state and robot_state.get("mode") not in ("CHARGING", "OFFLINE", None):
+        # IDLE은 "사용 중"이 아니므로 blocked로 보내지 않는다.
+        if robot_state and robot_state.get("mode") not in ("CHARGING", "OFFLINE", "IDLE", None):
             if not robot_state.get("active_user_id"):
                 return redirect(url_for("blocked", robot_id=robot_id))
 
