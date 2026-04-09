@@ -161,7 +161,7 @@ class MapWidget(QLabel):
     Gazebo/AMCL pose를 맵 픽셀에 매핑한다.
     """
 
-    map_clicked = pyqtSignal(float, float)  # world (x, y)
+    map_clicked = pyqtSignal(float, float, float)  # world (x, y, theta)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -185,7 +185,14 @@ class MapWidget(QLabel):
 
         # 목적지 마커
         self._goto_marker: tuple[float, float] | None = None
+        self._goto_theta: float = 0.0  # 목적지 방향 (rad)
         self._click_label: str = ''  # 클릭 좌표 텍스트
+
+        # 드래그 상태 (클릭=위치, 드래그=방향)
+        self._drag_origin_px: tuple[int, int] | None = None  # 클릭 위치 (px)
+        self._drag_origin_world: tuple[float, float] | None = None  # 클릭 위치 (world)
+        self._drag_current_px: tuple[int, int] | None = None  # 현재 마우스 (px)
+        self._dragging: bool = False
 
         # 점멸 타이머
         self._blink_on = False
@@ -295,9 +302,10 @@ class MapWidget(QLabel):
         self._robot_states[robot_id] = state
         self.update()
 
-    def set_goto_marker(self, x: float, y: float):
+    def set_goto_marker(self, x: float, y: float, theta: float = 0.0):
         """목적지 마커 표시."""
         self._goto_marker = (x, y)
+        self._goto_theta = theta
         self.update()
 
     def clear_goto_marker(self):
@@ -309,12 +317,45 @@ class MapWidget(QLabel):
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
-            x, y = self._pixel_to_world(event.pos().x(), event.pos().y())
-            self._goto_marker = (x, y)
-            self._click_label = f'({x:.3f}, {y:.3f})'
-            self.map_clicked.emit(x, y)
+            px, py = event.pos().x(), event.pos().y()
+            wx, wy = self._pixel_to_world(px, py)
+            self._drag_origin_px = (px, py)
+            self._drag_origin_world = (wx, wy)
+            self._drag_current_px = (px, py)
+            self._dragging = False
+            self._goto_marker = (wx, wy)
+            self._goto_theta = 0.0
             self.update()
         super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        if self._drag_origin_px is not None:
+            px, py = event.pos().x(), event.pos().y()
+            dx = px - self._drag_origin_px[0]
+            dy = py - self._drag_origin_px[1]
+            if dx * dx + dy * dy > 25:  # 5px 이상 드래그 시 방향 모드
+                self._dragging = True
+            self._drag_current_px = (px, py)
+            if self._dragging:
+                raw = math.atan2(-(dy), dx)  # 화면 y 반전 보정
+                # 30° 단위로 스냅 (12방향)
+                step = math.radians(30)
+                self._goto_theta = round(raw / step) * step
+            self.update()
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        if event.button() == Qt.MouseButton.LeftButton and self._drag_origin_world:
+            wx, wy = self._drag_origin_world
+            theta = self._goto_theta
+            self._click_label = f'({wx:.3f}, {wy:.3f}, {math.degrees(theta):.0f}°)'
+            self.map_clicked.emit(wx, wy, theta)
+            self._drag_origin_px = None
+            self._drag_origin_world = None
+            self._drag_current_px = None
+            self._dragging = False
+            self.update()
+        super().mouseReleaseEvent(event)
 
     def _toggle_blink(self):
         self._blink_on = not self._blink_on
@@ -411,18 +452,38 @@ class MapWidget(QLabel):
             return
         mx, my = self._world_to_pixel(*self._goto_marker)
         arm = 10
-        p.setPen(QPen(QColor('#3498db'), 2))
+        color = QColor('#3498db')
+        p.setPen(QPen(color, 2))
         p.drawLine(mx - arm, my, mx + arm, my)
         p.drawLine(mx, my - arm, mx, my + arm)
         p.drawEllipse(mx - 4, my - 4, 8, 8)
 
-        # 클릭 좌표 텍스트
+        # 방향 화살표 (30° 스냅된 theta 기반)
+        arrow_len = 30
+        theta = self._goto_theta
+        ex = mx + int(arrow_len * math.cos(-theta))
+        ey = my + int(arrow_len * math.sin(-theta))
+        p.setPen(QPen(color, 3))
+        p.drawLine(mx, my, ex, ey)
+        # 화살촉
+        hs = 8
+        dx, dy = float(ex - mx), float(ey - my)
+        ang = math.atan2(dy, dx)
+        p.setBrush(color)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.drawPolygon(QPolygonF([
+            QPointF(ex, ey),
+            QPointF(ex - hs * math.cos(ang - 0.4), ey - hs * math.sin(ang - 0.4)),
+            QPointF(ex - hs * math.cos(ang + 0.4), ey - hs * math.sin(ang + 0.4)),
+        ]))
+
+        # 좌표 텍스트
         if self._click_label:
             font = QFont()
             font.setPointSize(9)
             font.setBold(True)
             p.setFont(font)
-            p.setPen(QColor('#3498db'))
+            p.setPen(color)
             p.drawText(mx + 12, my - 4, self._click_label)
 
     def paintEvent(self, event):

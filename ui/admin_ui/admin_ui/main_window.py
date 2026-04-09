@@ -329,8 +329,8 @@ class MainWindow(QMainWindow):
             f'Robot #{robot_id} — 맵에서 목적지를 클릭하세요'
         )
 
-    def _on_map_clicked(self, x: float, y: float):
-        """맵 클릭: 대기 중인 로봇에 admin_goto 즉시 전송."""
+    def _on_map_clicked(self, x: float, y: float, theta: float):
+        """맵 클릭+드래그: 대기 중인 로봇에 admin_goto(위치+방향) 전송."""
         rid = self._goto_pending_robot
         if rid is None:
             return
@@ -347,12 +347,13 @@ class MainWindow(QMainWindow):
             'robot_id': rid,
             'x': round(x, 4),
             'y': round(y, 4),
-            'theta': 0.0,
+            'theta': round(theta, 4),
         }
         self._tcp.send(payload)
-        self._map_widget.set_goto_marker(x, y)
+        self._map_widget.set_goto_marker(x, y, theta)
+        import math as _math
         self.statusBar().showMessage(
-            f'Robot #{rid} → admin_goto ({x:.3f}, {y:.3f}) 전송'
+            f'Robot #{rid} → admin_goto ({x:.3f}, {y:.3f}, {_math.degrees(theta):.0f}°) 전송'
         )
 
         # 대기 상태 해제
