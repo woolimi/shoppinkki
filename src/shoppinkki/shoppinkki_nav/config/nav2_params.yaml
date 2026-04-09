@@ -259,7 +259,6 @@ lifecycle_manager_navigation:
       - bt_navigator
       - waypoint_follower
       - velocity_smoother
-      - collision_monitor
 
 # Keepout filter lifecycle manager (autostart=false — activated by BT5)
 lifecycle_manager_filter:
