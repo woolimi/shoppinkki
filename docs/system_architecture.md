@@ -56,7 +56,7 @@
 | `Customer Web` | Mini Server (서버 PC) | Flask + SocketIO. 고객 UI 서빙 및 control_service 중계. LLM 직접 호출 |
 | `AI Server` | 서버 PC (Docker) | YOLOv8 추론 서버 (TCP :5005) + LLM 자연어 검색 서버 (REST :8000) |
 | `Control Device` | Control Center (서버 PC) | ROS2 노드 + TCP 서버 (:8080) + REST API. 로봇 명령·상태 관리. Control DB 전담 |
-| `Control DB` | Control Center (서버 PC) | MySQL. SESSION / CART / ROBOT / ALARM_LOG 등 전체 테이블 중앙 통합 |
+| `Control DB` | Control Center (서버 PC) | PostgreSQL 17. SESSION / CART / ROBOT / ZONE / BOUNDARY_CONFIG 등 전체 테이블 중앙 통합 |
 | `Open-RMF Fleet Adapter` | 서버 PC | RMF Traffic Schedule + Fleet Adapter. 다중 로봇 경로 충돌 자동 협상. Control Device 위에 레이어로 삽입 — Pi 코드 변경 없음 |
 
 ### EQUIP 레이어
