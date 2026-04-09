@@ -263,6 +263,12 @@ def get_zone(zone_id: int) -> Optional[Dict]:
         return cur.fetchone()
 
 
+def get_all_zones() -> List[Dict]:
+    with _cursor() as cur:
+        cur.execute('SELECT * FROM ZONE ORDER BY zone_id')
+        return cur.fetchall()
+
+
 def get_parking_slots() -> List[Dict]:
     """Return ZONE rows for parking slots 140, 141."""
     with _cursor() as cur:

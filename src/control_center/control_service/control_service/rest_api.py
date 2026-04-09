@@ -5,7 +5,7 @@ All endpoints return JSON.  Error responses: {"error": "message"}.
 Endpoints
 ---------
 GET  /robots                          → all robot states
-GET  /zone/<zone_id>/waypoint         → zone waypoint
+GET  /zones                           → all zones
 GET  /zone/parking/available          → available parking slot
 GET  /boundary                        → all boundary configs
 GET  /events?limit=<n>                → recent event log
@@ -64,18 +64,16 @@ def create_app(robot_manager: 'RobotManager',
 
     # ── Zone ──────────────────────────────────
 
+    @app.get('/zones')
+    def get_all_zones():
+        zones = db.get_all_zones()
+        return jsonify([_zone_dict(z) for z in zones])
+
     @app.get('/zone/parking/available')
     def parking_available():
         zone = robot_manager.get_available_parking()
         if not zone:
             return jsonify({'error': 'no parking available'}), 404
-        return jsonify(_zone_dict(zone))
-
-    @app.get('/zone/<int:zone_id>/waypoint')
-    def zone_waypoint(zone_id: int):
-        zone = db.get_zone(zone_id)
-        if not zone:
-            return jsonify({'error': f'zone {zone_id} not found'}), 404
         return jsonify(_zone_dict(zone))
 
     # ── Boundary ──────────────────────────────

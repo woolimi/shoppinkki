@@ -5,6 +5,7 @@ BT4 (BTGuiding) and BT5 (BTReturning).
 
 Also provides:
     set_keepout_filter(node, enable) — lifecycle_manager_filter control.
+    fetch_all_zones(host, port) — REST /zones 전체 fetch.
     get_parking_slot(host, port) — REST /zone/parking/available query.
 """
 
@@ -107,6 +108,29 @@ def make_get_parking_slot(host: str = '127.0.0.1', port: int = 8081):
             return None
 
     return _get
+
+
+def fetch_all_zones(
+    host: str = '127.0.0.1',
+    port: int = 8081,
+) -> dict[int, dict]:
+    """REST GET /zones → zone_id 키의 dict 로 캐시.
+
+    반환값 예시:
+        {1: {'zone_id': 1, 'zone_name': '가전제품', 'zone_type': 'product',
+             'x': 0.619, 'y': -0.007, 'theta': 0.0}, ...}
+    실패 시 빈 dict 반환.
+    """
+    url = f'http://{host}:{port}/zones'
+    try:
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            rows = _json.loads(resp.read())
+        cache = {row['zone_id']: row for row in rows}
+        logger.info('fetch_all_zones: %d zones loaded', len(cache))
+        return cache
+    except Exception as e:
+        logger.warning('fetch_all_zones: %s', e)
+        return {}
 
 
 def _make_pose(x: float, y: float, theta: float, stamp):

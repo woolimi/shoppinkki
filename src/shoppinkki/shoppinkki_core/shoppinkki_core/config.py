@@ -27,11 +27,12 @@ BATTERY_THRESHOLD: int = 20          # battery % below which HALTED triggers
                                      # (raise to 90 for bench testing)
 CHARGING_COMPLETE_THRESHOLD: int = 80  # battery % above which CHARGING → IDLE
 
-# ── Charger positions (map frame) ─────────
-# robot_id → (x, y, yaw)   — nav2_params 의 initial_pose 와 동기화
-CHARGER_POSES: dict[str, tuple[float, float, float]] = {
-    '54': (-0.056, -0.899, 0.0),   # P2
-    '18': (-0.056, -0.606, 0.0),   # P1
+# ── Charger zone IDs (DB zone 테이블 참조) ─────────
+# robot_id → zone_id  (seed_data.sql 기준)
+# 실제 좌표는 시작 시 /zones fetch 캐시(self._zones)에서 가져온다
+CHARGER_ZONE_IDS: dict[str, int] = {
+    '54': 141,   # 충전소_54(P2)
+    '18': 140,   # 충전소_18(P1)
 }
 
 # ── Robot connectivity ────────────────────────

@@ -38,7 +38,8 @@ except ImportError:
 
 from .bt_runner import BTRunner
 from .cmd_handler import CmdHandler
-from .config import BATTERY_THRESHOLD, CHARGING_COMPLETE_THRESHOLD
+from .config import BATTERY_THRESHOLD, CHARGING_COMPLETE_THRESHOLD, CHARGER_ZONE_IDS
+from shoppinkki_nav.nav2_client import fetch_all_zones
 from .hw_controller import HWController
 from .state_machine import ShoppinkiSM
 
@@ -60,14 +61,17 @@ logger = logging.getLogger(__name__)
 ROBOT_ID = os.environ.get('ROBOT_ID', '54')
 
 
-
-
 class ShoppinkiMainNode(Node):
     """Main node: SM + BT Runner + HW + publishers/subscribers."""
 
     def __init__(self) -> None:
         super().__init__('shoppinkki_main_node')
         self.get_logger().info(f'Starting ShopPinkki main node (robot_id={ROBOT_ID})')
+
+        # ── Zone cache (control_service REST /zones, 시작 시 1회 fetch) ──
+        _cs_host = os.environ.get('CONTROL_SERVICE_HOST', '127.0.0.1')
+        _cs_port = int(os.environ.get('CONTROL_SERVICE_PORT', '8081'))
+        self._zones: dict[int, dict] = fetch_all_zones(_cs_host, _cs_port)
 
         # ── State machine ─────────────────────
         self.sm = ShoppinkiSM(
@@ -98,15 +102,17 @@ class ShoppinkiMainNode(Node):
             self.get_logger().info(f'Nav2 action client ready ({nav2_action})')
 
             # BT5 (RETURNING): Nav2 기반 실제 구현으로 교체
-            charger = CHARGER_POSES.get(ROBOT_ID)
-            if charger:
+            charger_zone_id = CHARGER_ZONE_IDS.get(ROBOT_ID)
+            charger_zone = self._zones.get(charger_zone_id) if charger_zone_id else None
+            if charger_zone:
                 from .bt_returning import Nav2ReturningBT
                 self._bt_returning = Nav2ReturningBT(
                     node=self, action_client=self._nav2_client,
-                    charger_x=charger[0], charger_y=charger[1],
-                    charger_yaw=charger[2])
+                    charger_x=charger_zone['x'], charger_y=charger_zone['y'],
+                    charger_yaw=charger_zone['theta'])
                 self.get_logger().info(
-                    'BT5 RETURNING: charger (%.3f, %.3f)' % (charger[0], charger[1]))
+                    'BT5 RETURNING: charger (%.3f, %.3f)' % (
+                        charger_zone['x'], charger_zone['y']))
         else:
             self.get_logger().warning('nav2_msgs not available — admin_goto disabled')
 

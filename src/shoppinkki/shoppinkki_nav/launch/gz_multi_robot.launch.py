@@ -10,10 +10,12 @@
 """
 
 import os
+import platform
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
+    ExecuteProcess,
     GroupAction,
     IncludeLaunchDescription,
     SetEnvironmentVariable,
@@ -217,17 +219,40 @@ def generate_launch_description():
         ),
     )
 
-    # Gazebo (server + GUI 통합 — 분리 실행 시 서버 프로세스에 ogre2 렌더링 컨텍스트가
-    # 없어 Sensors System이 초기화되지 않아 LIDAR/카메라 데이터가 발행되지 않는 문제 수정)
-    gz = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(
-                get_package_share_directory('ros_gz_sim'),
-                'launch', 'gz_sim.launch.py',
-            )
-        ),
-        launch_arguments={'gz_args': f'-r -v4 {WORLD_FILE}'}.items(),
-    )
+    # Gazebo 실행
+    # macOS: server + GUI 동시 실행 불가 (gz-sim#44)
+    #   → server(-s --headless-rendering) + GUI(-g) 분리
+    # Linux: 통합 실행 (Sensors System이 ogre2 렌더링 컨텍스트 필요)
+    _is_macos = platform.system() == 'Darwin'
+    if _is_macos:
+        gz_server = IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(
+                    get_package_share_directory('ros_gz_sim'),
+                    'launch', 'gz_sim.launch.py',
+                )
+            ),
+            launch_arguments={
+                'gz_args': f'-s -r --headless-rendering -v4 {WORLD_FILE}',
+                'on_exit_shutdown': 'true',
+            }.items(),
+        )
+        gz_gui = ExecuteProcess(
+            cmd=['gz', 'sim', '-g', '-v4'],
+            output='screen',
+        )
+        gz_actions = [gz_server, gz_gui]
+    else:
+        gz = IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(
+                    get_package_share_directory('ros_gz_sim'),
+                    'launch', 'gz_sim.launch.py',
+                )
+            ),
+            launch_arguments={'gz_args': f'-r -v4 {WORLD_FILE}'}.items(),
+        )
+        gz_actions = [gz]
 
     # 각 로봇 액션 생성 (로봇 18은 15초 딜레이 — 54번 Nav2 초기화 후 시작)
     robot_54_actions = make_robot_actions(ROBOTS[0], delay=0.0)
@@ -235,7 +260,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         set_gz_path,
-        gz,
+        *gz_actions,
         *robot_54_actions,
         *robot_18_actions,
     ])
