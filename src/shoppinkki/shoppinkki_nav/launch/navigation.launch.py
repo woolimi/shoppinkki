@@ -64,7 +64,7 @@ def generate_launch_description():
         parameters=[{
             'use_sim_time': LaunchConfiguration('use_sim_time'),
         }],
-        env={
+        additional_env={
             'CONTROL_SERVICE_HOST': os.environ.get('CONTROL_SERVICE_HOST', '127.0.0.1'),
             'CONTROL_SERVICE_PORT': os.environ.get('CONTROL_SERVICE_PORT', '8081'),
         },
