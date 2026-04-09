@@ -25,7 +25,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import Command
 from launch_ros.actions import Node, PushRosNamespace
 from nav2_common.launch import RewrittenYaml
-from shoppinkki_nav.launch_utils import resolve_nav2_params
+from shoppinkki_nav.launch_utils import resolve_nav2_params, get_charger_pose, map_to_gazebo
 
 
 # ── 패키지 경로 ────────────────────────────────────────────────────────────────
@@ -37,29 +37,29 @@ SHOPPINKKI_NAV = get_package_share_directory('shoppinkki_nav')
 MAP_YAML = os.path.join(SHOPPINKKI_NAV, 'maps', 'shop.yaml')
 WORLD_FILE = os.path.join(PINKY_GZ, 'worlds', 'shop.world')
 
-# ── 로봇 설정 ──────────────────────────────────────────────────────────────────
-ROBOTS = [
-    {
-        'id': '54',
-        'ns': 'robot_54',
-        'model': 'pinky_54',
-        # Gazebo 스폰 좌표 (Gazebo world frame)
-        'x': '0.939', 'y': '0.120', 'z': '0.0',
-        'yaw': '1.570796',
-        # 맵 프레임 좌표 (static TF + AMCL 초기 pose용) — AMCL 수렴값으로 설정
-        'map_x': '-0.056', 'map_y': '-0.899', 'map_yaw': '0.0',
-    },
-    {
-        'id': '18',
-        'ns': 'robot_18',
-        'model': 'pinky_18',
-        # Gazebo 스폰 좌표 (Gazebo world frame)
-        'x': '0.699', 'y': '0.120', 'z': '0.0',
-        'yaw': '1.570796',
-        # 맵 프레임 좌표 (static TF + AMCL 초기 pose용)
-        'map_x': '-0.056', 'map_y': '-0.606', 'map_yaw': '0.0',
-    },
-]
+# ── 로봇 설정 (충전소 좌표는 DB/fallback에서 자동 취득) ─────────────────────
+def _build_robots() -> list[dict]:
+    robots = []
+    for rid, model_name in [('54', 'pinky_54'), ('18', 'pinky_18')]:
+        ns = f'robot_{rid}'
+        pose = get_charger_pose(rid)
+        gz = map_to_gazebo(pose['x'], pose['y'], pose['yaw'])
+        robots.append({
+            'id': rid,
+            'ns': ns,
+            'model': model_name,
+            'x': str(round(gz['x'], 4)),
+            'y': str(round(gz['y'], 4)),
+            'z': '0.0',
+            'yaw': str(round(gz['yaw'], 6)),
+            'map_x': str(pose['x']),
+            'map_y': str(pose['y']),
+            'map_yaw': str(pose['yaw']),
+        })
+    return robots
+
+
+ROBOTS = _build_robots()
 
 
 def make_robot_actions(robot: dict, delay: float) -> list:

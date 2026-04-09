@@ -21,41 +21,41 @@
 
       <!-- Perimeter walls -->
       <collision name="wall_south">
-        <pose>0.938101 -0.00499 0.175 0 0 0</pose>
+        <pose>0.938101 0.000134 0.175 0 0 0</pose>
         <geometry>
           <box>
-            <size>1.876202 0.00998 0.35</size>
+            <size>1.852200 0.00998 0.35</size>
           </box>
         </geometry>
       </collision>
       <collision name="wall_north">
-        <pose>0.938083 1.402159 0.175 0 0 0</pose>
+        <pose>0.938101 1.397034 0.175 0 0 0</pose>
         <geometry>
           <box>
-            <size>1.876202 0.00998 0.35</size>
+            <size>1.852200 0.00998 0.35</size>
           </box>
         </geometry>
       </collision>
       <collision name="wall_west">
-        <pose>-0.005212 0.698584 0.175 0 0 0</pose>
+        <pose>0.012001 0.698584 0.175 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.010423 1.417131 0.35</size>
+            <size>0.010423 1.396900 0.35</size>
           </box>
         </geometry>
       </collision>
       <collision name="wall_east">
-        <pose>1.881414 0.698584 0.175 0 0 0</pose>
+        <pose>1.864201 0.698584 0.175 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.010423 1.417131 0.35</size>
+            <size>0.010423 1.396900 0.35</size>
           </box>
         </geometry>
       </collision>
 
       <!-- divider: L = thin bar along +x + thin bar along +y (local AABBs → same DAE matrix) -->
       <collision name="divider_arm_y">
-        <pose>1.404525 0.299388 0.175 0 0 0</pose>
+        <pose>1.440 0.306 0.175 0 0 0</pose>
         <geometry>
           <box>
             <size>0.02 0.199596 0.35</size>
@@ -121,7 +121,7 @@
         </geometry>
       </collision>
       <collision name="section_beverage">
-        <pose>1.281 0.867212 0.175 0 0 0</pose>
+        <pose>1.195 0.844 0.175 0 0 0</pose>
         <geometry>
           <box>
             <size>0.100 0.209576 0.35</size>
