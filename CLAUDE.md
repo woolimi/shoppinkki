@@ -103,7 +103,7 @@ Python packages use pytest. Test files are in `test/` subdirectories of each pac
 ### Map Building (Real Robot)
 ```bash
 # [On Pinky]
-ros2 launch pinky_bringup bringup_robot.launch.xml
+ROBOT_ID=54 ros2 launch shoppinkki_nav bringup.launch.py
 ros2 launch pinky_navigation map_building.launch.xml
 
 # [On PC]
@@ -115,8 +115,8 @@ ros2 run nav2_map_server map_saver_cli -f "<map_name>"
 ### Navigation (Real Robot)
 ```bash
 # [On Pinky]
-ros2 launch pinky_bringup bringup_robot.launch.xml
-ros2 launch shoppinkki_nav navigation.launch.py
+ROBOT_ID=54 ros2 launch shoppinkki_nav bringup.launch.py
+ROBOT_ID=54 ros2 launch shoppinkki_nav navigation.launch.py
 
 # [On PC]
 ros2 launch pinky_navigation nav2_view.launch.xml

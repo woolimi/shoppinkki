@@ -28,7 +28,7 @@ ROBOT_IDS = os.environ.get('ROBOT_IDS', '18,54').split(',')
 DOMAIN_ID = int(os.environ.get('ROS_DOMAIN_ID', '14'))
 
 # 로봇별 AMCL 초기 위치 — 맵 프레임 좌표 (Gazebo world 좌표 아님!)
-# SLAM 수렴 후 측정값. 변경 시 nav2_params_robot_<id>.yaml 의 initial_pose 와 동일하게 유지.
+# SLAM 수렴 후 측정값. DB zone 테이블(충전소 waypoint)과 동기화 필요.
 _INIT_POSES: dict[str, tuple[float, float, float]] = {
     '54': (-0.056, -0.899, math.pi / 2),  # P2 충전소, map frame
     '18': (-0.056, -0.606, math.pi / 2),  # P1 충전소, map frame

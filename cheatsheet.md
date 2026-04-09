@@ -16,7 +16,7 @@ ros2 launch pinky_navigation gz_map_view.launch.xml
 ```bash
 # [Pinky]
 ## 로봇 설명(URDF), 라이다, 베이스 컨트롤러, 오도메트리 등 실제 로봇에 필요한 노드들을 띄웁니다
-ros2 launch pinky_bringup bringup_robot.launch.xml
+ROBOT_ID=54 ros2 launch shoppinkki_nav bringup.launch.py
 ## slam_toolbox를 켜서 /scan과 TF로 맵을 만들고 /map을 퍼블리시합니다.
 ros2 launch pinky_navigation map_building.launch.xml
 
@@ -50,7 +50,7 @@ ros2 launch pinky_navigation gz_nav2_view.launch.xml
 ```bash
 # [Pinky]
 ## 로봇 설명(URDF), 라이다, 베이스 컨트롤러, 오도메트리 등 실제 로봇에 필요한 노드들을 띄웁니다
-ros2 launch pinky_bringup bringup_robot.launch.xml
+ROBOT_ID=54 ros2 launch shoppinkki_nav bringup.launch.py
 
 # 저장한 정적 맵(yaml)을 로드해 localization + navigation(Nav2) 스택을 실행합니다.
 ros2 launch pinky_navigation bringup_launch.xml map:=src/pinky_pro/pinky_navigation/map/shop.yaml

@@ -135,9 +135,7 @@ shoppinkki_nav/
 ├── setup.cfg
 ├── resource/shoppinkki_nav
 ├── config/
-│   ├── nav2_params.yaml          ← Nav2 AMCL, planner, controller 파라미터 (공통)
-│   ├── nav2_params_robot_54.yaml ← 로봇 54 전용 Nav2 파라미터
-│   ├── nav2_params_robot_18.yaml ← 로봇 18 전용 Nav2 파라미터
+│   ├── nav2_params.yaml          ← Nav2 파라미터 템플릿 (__NS__ 플레이스홀더, launch 시 치환)
 │   ├── bridge_robot_54.yaml      ← ros_gz_bridge 토픽 매핑 (로봇 54)
 │   ├── bridge_robot_18.yaml      ← ros_gz_bridge 토픽 매핑 (로봇 18)
 │   └── keepout_mask.yaml         ← Keepout Filter 마스크 설정
