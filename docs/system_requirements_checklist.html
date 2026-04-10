@@ -168,6 +168,53 @@
       white-space: nowrap;
     }
 
+    .chip-pct {
+      font-weight: 700;
+      color: var(--accent);
+      background: #e8f0ff;
+    }
+
+    .section-summary-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      justify-content: flex-end;
+    }
+
+    .section-breakdown {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 8px;
+    }
+
+    .section-breakdown .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .section-breakdown .row .name {
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+
+    .section-breakdown .row .pct {
+      font-weight: 700;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+
     .items {
       display: grid;
       gap: 8px;
@@ -245,6 +292,7 @@
         <div class="stat"><span class="k">진행률</span><span class="v" id="statRate">0%</span></div>
       </div>
       <div class="bar"><div id="progressBar"></div></div>
+      <div class="section-breakdown" id="sectionBreakdown" hidden></div>
     </section>
 
     <section class="card">
@@ -277,6 +325,7 @@
       statTodo: document.getElementById("statTodo"),
       statRate: document.getElementById("statRate"),
       progressBar: document.getElementById("progressBar"),
+      sectionBreakdown: document.getElementById("sectionBreakdown"),
       search: document.getElementById("search"),
       btnToggleDone: document.getElementById("btnToggleDone"),
       btnDownload: document.getElementById("btnDownload"),
@@ -339,11 +388,15 @@
       return sections.filter((section) => section.items.length > 0);
     }
 
+    function sectionPercent(done, total) {
+      return total ? Math.round((done / total) * 100) : 0;
+    }
+
     function computeTotals(items) {
       const total = items.length;
       const done = items.reduce((acc, item) => acc + (state.checked[item.id] ? 1 : 0), 0);
       const todo = total - done;
-      const rate = total ? Math.round((done / total) * 100) : 0;
+      const rate = sectionPercent(done, total);
       return { total, done, todo, rate };
     }
 
@@ -368,13 +421,35 @@
       });
     }
 
+    function renderSectionBreakdown() {
+      if (!state.sections.length) {
+        el.sectionBreakdown.hidden = true;
+        el.sectionBreakdown.innerHTML = "";
+        return;
+      }
+      el.sectionBreakdown.hidden = false;
+      el.sectionBreakdown.innerHTML = state.sections.map((section) => {
+        const done = section.items.reduce((acc, item) => acc + (state.checked[item.id] ? 1 : 0), 0);
+        const total = section.items.length;
+        const pct = sectionPercent(done, total);
+        return `
+          <div class="row" title="${escapeHtml(section.title)}">
+            <span class="name">${escapeHtml(section.title)}</span>
+            <span class="pct">${pct}%</span>
+          </div>
+        `;
+      }).join("");
+    }
+
     function render() {
       const allItems = state.sections.flatMap((s) => s.items);
       applyStats(allItems);
+      renderSectionBreakdown();
 
       const sectionHtml = state.sections.map((section) => {
         const filtered = filterItems(section.items);
         const sectionDone = section.items.reduce((acc, item) => acc + (state.checked[item.id] ? 1 : 0), 0);
+        const sectionPct = sectionPercent(sectionDone, section.items.length);
 
         if (filtered.length === 0) {
           return "";
@@ -395,10 +470,13 @@
         }).join("");
 
         return `
-          <details class="section" open>
+          <details class="section">
             <summary>
               <strong>${escapeHtml(section.title)}</strong>
-              <span class="chip">${sectionDone}/${section.items.length} 완료</span>
+              <div class="section-summary-meta">
+                <span class="chip chip-pct">${sectionPct}%</span>
+                <span class="chip">${sectionDone}/${section.items.length} 완료</span>
+              </div>
             </summary>
             <div class="items">${itemHtml}</div>
           </details>
@@ -432,6 +510,9 @@
 
       for (const section of state.sections) {
         lines.push("## " + section.title);
+        const sDone = section.items.reduce((acc, item) => acc + (state.checked[item.id] ? 1 : 0), 0);
+        const sTotal = section.items.length;
+        lines.push("- 섹션 진행률: " + sectionPercent(sDone, sTotal) + "% (" + sDone + "/" + sTotal + ")");
         lines.push("");
         for (const item of section.items) {
           const mark = state.checked[item.id] ? "x" : " ";
