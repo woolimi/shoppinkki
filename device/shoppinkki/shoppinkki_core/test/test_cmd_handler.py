@@ -85,6 +85,31 @@ class TestModeReturning:
         cmd(sm, h, cmd='mode', value='RETURNING')
         assert sm.state == 'RETURNING'
 
+    def test_guiding_to_returning(self):
+        sm, h = make_handler(has_unpaid_items=lambda: False)
+        sm.charging_completed()
+        sm.enter_tracking()
+        sm.enter_guiding()
+        cmd(sm, h, cmd='mode', value='RETURNING')
+        assert sm.state == 'RETURNING'
+
+    def test_searching_to_returning(self):
+        sm, h = make_handler(has_unpaid_items=lambda: False)
+        sm.charging_completed()
+        sm.enter_tracking()
+        sm.enter_searching()
+        cmd(sm, h, cmd='mode', value='RETURNING')
+        assert sm.state == 'RETURNING'
+
+    def test_guiding_unpaid_to_locked_then_returning(self):
+        sm, h = make_handler(has_unpaid_items=lambda: True)
+        sm.charging_completed()
+        sm.enter_tracking()
+        sm.enter_guiding()
+        cmd(sm, h, cmd='mode', value='RETURNING')
+        assert sm.state == 'RETURNING'
+        assert sm.is_locked_return is True
+
 
 class TestResumeTracking:
     def test_resume_from_waiting(self):

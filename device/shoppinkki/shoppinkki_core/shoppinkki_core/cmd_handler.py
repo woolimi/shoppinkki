@@ -126,7 +126,8 @@ class CmdHandler:
                 logger.warning('mode=WAITING ignored in state=%s', state)
 
         elif value == 'RETURNING':
-            if state not in ('TRACKING', 'TRACKING_CHECKOUT', 'WAITING'):
+            if state not in ('TRACKING', 'TRACKING_CHECKOUT', 'WAITING',
+                             'GUIDING', 'SEARCHING'):
                 logger.warning('mode=RETURNING ignored in state=%s', state)
                 return
 

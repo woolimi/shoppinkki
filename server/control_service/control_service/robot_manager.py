@@ -25,7 +25,9 @@ logger = logging.getLogger(__name__)
 
 # 쇼핑 종료(return) 시 Pi로 mode=RETURNING 릴레이 가능한 SM 상태.
 # shoppinkki_core.cmd_handler._handle_mode 과 동일 집합을 유지할 것.
-_RETURN_RELAY_MODES = frozenset({'TRACKING', 'TRACKING_CHECKOUT', 'WAITING'})
+_RETURN_RELAY_MODES = frozenset({
+    'TRACKING', 'TRACKING_CHECKOUT', 'WAITING', 'GUIDING', 'SEARCHING',
+})
 
 
 # ──────────────────────────────────────────────
@@ -280,25 +282,31 @@ class RobotManager:
                 # 쇼핑 종료: customer_web의 return 이벤트를 Pi가 이해하는 mode=RETURNING으로 변환해 전달한다.
                 # (Pi는 cmd='return'을 처리하지 않음)
                 #
-                # 1) cart/session 정리 (다음 로그인에 남지 않게)
-                self._clear_active_cart(robot_id, reason='return')
-                try:
-                    session = db.get_active_session_by_robot(robot_id)
-                    if session:
-                        db.end_session(session['session_id'])
-                        db.update_robot(robot_id, active_user_id=None)
-                except Exception:
-                    logger.exception('Failed to end session on return (robot=%s)', robot_id)
-                # 2) Pi SM이 RETURNING 전이를 받을 수 있는 상태일 때만 릴레이·낙관적 갱신
+                # Pi로 RETURNING을 보낸 뒤에 세션/장바구니를 정리한다. (이전에는 먼저 세션을 끊어
+                # 캐시 모드와 실제 SM이 어긋나거나, GUIDING 등에서 릴레이가 스킵된 채 DB만 비워지는
+                # 경우가 있었음)
+
+                def _finish_shopping_session() -> None:
+                    self._clear_active_cart(robot_id, reason='return')
+                    try:
+                        session = db.get_active_session_by_robot(robot_id)
+                        if session:
+                            db.end_session(session['session_id'])
+                            db.update_robot(robot_id, active_user_id=None)
+                    except Exception:
+                        logger.exception(
+                            'Failed to end session on return (robot=%s)', robot_id)
+
                 with self._lock:
                     st = self._states.get(robot_id)
                 cached_mode = st.mode if st is not None else 'OFFLINE'
                 if cached_mode not in _RETURN_RELAY_MODES:
                     logger.info(
                         'return: skip Pi RETURNING (robot=%s cached_mode=%s; '
-                        'need TRACKING/TRACKING_CHECKOUT/WAITING)',
+                        'need TRACKING/TRACKING_CHECKOUT/WAITING/GUIDING/SEARCHING)',
                         robot_id, cached_mode,
                     )
+                    _finish_shopping_session()
                     return
                 payload = dict(payload)
                 payload.pop('cmd', None)
@@ -308,7 +316,7 @@ class RobotManager:
                 }
                 payload_to_pi.update(payload)
                 self._relay_to_pi(robot_id, payload_to_pi)
-                # 3) 관제 UI·REST용 메모리/DB 즉시 반영 (Pi status 수신 전 지연 방지)
+                # 관제 UI·REST용 메모리/DB 즉시 반영 (Pi status 수신 전 지연 방지)
                 with self._lock:
                     st = self._get_or_create(robot_id)
                     prev_mode = st.mode
@@ -318,6 +326,7 @@ class RobotManager:
                 with self._lock:
                     st = self._states[robot_id]
                 self._push_status(robot_id, st)
+                _finish_shopping_session()
                 return
             self._relay_to_pi(robot_id, payload)
         else:

@@ -180,6 +180,20 @@ class TestReturning:
         sm.enter_returning()
         assert sm.state == 'RETURNING'
 
+    def test_guiding_to_returning(self):
+        sm = make_sm()
+        reach_tracking(sm)
+        sm.enter_guiding()
+        sm.enter_returning()
+        assert sm.state == 'RETURNING'
+
+    def test_searching_to_returning(self):
+        sm = make_sm()
+        reach_tracking(sm)
+        sm.enter_searching()
+        sm.enter_returning()
+        assert sm.state == 'RETURNING'
+
 
 class TestLocked:
     def test_tracking_to_locked_auto_returning(self):
@@ -211,6 +225,14 @@ class TestLocked:
         sm.enter_waiting()
         sm.enter_locked()
         assert sm.state == 'RETURNING'
+
+    def test_guiding_to_locked_auto_returning(self):
+        sm = make_sm()
+        reach_tracking(sm)
+        sm.enter_guiding()
+        sm.enter_locked()
+        assert sm.state == 'RETURNING'
+        assert sm.is_locked_return is True
 
 
 class TestHalted:

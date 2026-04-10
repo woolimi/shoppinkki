@@ -94,14 +94,16 @@ class ShoppinkiSM:
          'source': 'TRACKING', 'dest': 'TRACKING_CHECKOUT'},
 
         # ── Locked / Returning ────────────────────────
-        # TRACKING / TRACKING_CHECKOUT / WAITING → LOCKED  (unpaid items)
+        # TRACKING / TRACKING_CHECKOUT / WAITING / GUIDING / SEARCHING → LOCKED  (unpaid)
         {'trigger': 'enter_locked',
-         'source': ['TRACKING', 'TRACKING_CHECKOUT', 'WAITING'],
+         'source': ['TRACKING', 'TRACKING_CHECKOUT', 'WAITING',
+                    'GUIDING', 'SEARCHING'],
          'dest': 'LOCKED'},
 
-        # TRACKING / TRACKING_CHECKOUT / WAITING / LOCKED → RETURNING
+        # 쇼핑 종료(mode=RETURNING): 안내 주행·탐색 중에도 귀환 가능 (BT 전환은 BTRunner가 처리)
         {'trigger': 'enter_returning',
-         'source': ['TRACKING', 'TRACKING_CHECKOUT', 'WAITING', 'LOCKED'],
+         'source': ['TRACKING', 'TRACKING_CHECKOUT', 'WAITING', 'LOCKED',
+                    'GUIDING', 'SEARCHING'],
          'dest': 'RETURNING'},
 
         # RETURNING → CHARGING  (BT5 Nav2 SUCCESS)

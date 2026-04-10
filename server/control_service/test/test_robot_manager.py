@@ -104,9 +104,12 @@ class TestBboxUpdate:
 
 
 class TestWebReturn:
-    """쇼핑 종료(return): TRACKING 계열에서만 Pi로 RETURNING 릴레이."""
+    """쇼핑 종료(return): 쇼핑 중 SM(TRACKING 계열·GUIDING·SEARCHING)에서 Pi로 RETURNING 릴레이."""
 
-    @pytest.mark.parametrize('mode', ['TRACKING', 'TRACKING_CHECKOUT', 'WAITING'])
+    @pytest.mark.parametrize(
+        'mode',
+        ['TRACKING', 'TRACKING_CHECKOUT', 'WAITING', 'GUIDING', 'SEARCHING'],
+    )
     def test_return_relays_returning_when_shopping_mode(self, mode):
         with patch('control_service.robot_manager.db') as mock_db:
             mock_db.get_all_robots.return_value = [
