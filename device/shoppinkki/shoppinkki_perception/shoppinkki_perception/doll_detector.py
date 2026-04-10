@@ -406,10 +406,11 @@ def _to_jpeg(frame) -> bytes:
 
 
 def _roi_to_jpeg(roi) -> bytes:
-    """ROI numpy 배열 → JPEG bytes."""
+    """ROI numpy 배열(BGR) → JPEG bytes."""
     try:
         import cv2
-        _, buf = cv2.imencode('.jpg', roi, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        rgb = cv2.cvtColor(roi, cv2.COLOR_BGR2RGB)
+        _, buf = cv2.imencode('.jpg', rgb, [cv2.IMWRITE_JPEG_QUALITY, 85])
         return bytes(buf)
     except Exception:
         return b''
