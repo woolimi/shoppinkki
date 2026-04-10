@@ -43,21 +43,24 @@ def generate_launch_description():
         }.items(),
     )
 
-    # ── 2. LiDAR — frame_id 에 namespace prefix ──────────────────────────────
-    lidar = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(
-                get_package_share_directory('sllidar_ros2'),
-                'launch', 'sllidar_c1_launch.py',
-            )
-        ),
-        launch_arguments={
+    # ── 2. LiDAR — namespace 직접 지정 ──────────────────────────────────────
+    #   PushRosNamespace + IncludeLaunchDescription 는 전파가 안 되므로
+    #   sllidar_node 를 직접 선언하여 /robot_<id>/scan 으로 발행
+    lidar = Node(
+        package='sllidar_ros2',
+        executable='sllidar_node',
+        name='sllidar_node',
+        namespace=ns,
+        parameters=[{
+            'channel_type': 'serial',
             'serial_port': '/dev/ttyAMA0',
+            'serial_baudrate': 460800,
             'frame_id': ns_slash + 'rplidar_link',
-            'inverted': 'false',
-            'angle_compensate': 'true',
+            'inverted': False,
+            'angle_compensate': True,
             'scan_mode': 'DenseBoost',
-        }.items(),
+        }],
+        output='screen',
     )
 
     # ── 3. ns_bringup (모터 + namespace odom TF) ─────────────────────────────
