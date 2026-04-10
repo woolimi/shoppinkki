@@ -286,14 +286,8 @@
 
     .demo-grid {
       display: grid;
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
       gap: 18px;
-    }
-
-    @media (min-width: 900px) {
-      .demo-grid {
-        grid-template-columns: 1fr 1fr;
-      }
     }
 
     .demo-block h3 {
@@ -340,7 +334,7 @@
 
     <section class="card" aria-labelledby="demo-heading">
       <h2 class="demo-heading" id="demo-heading">UI 데모</h2>
-      <p class="demo-intro">관제(Admin UI)와 고객 웹(Customer Web) 녹화</p>
+      <p class="demo-intro">관제(Admin UI), 고객 웹(Customer Web), LLM 기반 물건 찾기 후 구역 안내(GUIDING) 흐름 녹화</p>
       <div class="demo-grid">
         <div class="demo-block">
           <h3>Admin UI</h3>
@@ -356,6 +350,15 @@
           <div class="video-wrap">
             <video controls playsinline preload="metadata">
               <source src="./custom_web_demo.mp4" type="video/mp4" />
+              브라우저가 MP4 재생을 지원하지 않습니다.
+            </video>
+          </div>
+        </div>
+        <div class="demo-block">
+          <h3>물건 찾기 + 안내 (LLM → GUIDING)</h3>
+          <div class="video-wrap">
+            <video controls playsinline preload="metadata">
+              <source src="./llm.mp4" type="video/mp4" />
               브라우저가 MP4 재생을 지원하지 않습니다.
             </video>
           </div>
