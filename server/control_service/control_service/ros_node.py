@@ -20,6 +20,8 @@ import json
 import logging
 import math
 import os
+import time
+import threading
 from typing import TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
@@ -176,9 +178,14 @@ class ControlServiceNode:
             logger.warning('teleport: missing message types: %s', e)
             return False
 
+        # NOTE:
+        # 실환경에서 ros2 CLI로는 서비스가 보이는데, 멀티스레드에서 호출되는
+        # rclpy Client.wait_for_service()가 보수적으로 False를 반환하는 경우가 있다.
+        # 따라서 wait_for_service에만 의존하지 않고 "호출 시도 + spin_until_future_complete"
+        # 로 성공 여부를 판정한다.
+        svc_name = f'/world/{self._gz_world}/set_pose'
         if not self._set_pose_client.wait_for_service(timeout_sec=0.2):
-            logger.warning('teleport: /world/%s/set_pose not ready', self._gz_world)
-            return False
+            logger.warning('teleport: %s not ready (will try call anyway)', svc_name)
 
         req = self._SetEntityPose.Request()
         req.entity = Entity(name=model_name, type=Entity.MODEL)
@@ -190,19 +197,37 @@ class ControlServiceNode:
         req.pose.orientation.w = math.cos(gyaw / 2.0)
 
         future = self._set_pose_client.call_async(req)
-        start_ns = self._node.get_clock().now().nanoseconds
-        while not future.done():
-            if (self._node.get_clock().now().nanoseconds - start_ns) > int(0.5e9):
-                logger.warning('teleport: timeout waiting for service response')
-                return False
         try:
-            resp = future.result()
-            ok = bool(getattr(resp, 'success', False))
+            # rclpy.spin()이 이미 별도 스레드에서 돌고 있으므로 여기서 다시 spin하면
+            # "Executor is already spinning" 예외가 난다. Future 완료만 기다린다.
+            done_evt = threading.Event()
+            out: dict[str, object] = {'ok': False, 'err': None}
+
+            def _done_cb(fut) -> None:
+                try:
+                    resp = fut.result()
+                    out['ok'] = bool(getattr(resp, 'success', False))
+                except Exception as e:
+                    out['err'] = e
+                finally:
+                    done_evt.set()
+
+            future.add_done_callback(_done_cb)
+
+            if not done_evt.wait(timeout=1.5):
+                logger.warning('teleport: timeout waiting for service response (%s)', svc_name)
+                return False
+
+            if out.get('err') is not None:
+                logger.exception('teleport: service call failed', exc_info=out['err'])
+                return False
+
+            ok = bool(out.get('ok', False))
             logger.info('teleport: %s → (%.3f, %.3f, %.3f) success=%s',
                         model_name, gx, gy, gyaw, ok)
             return ok
         except Exception:
-            logger.exception('teleport: service call failed')
+            logger.exception('teleport: unexpected error')
             return False
 
     def _on_status(self, robot_id: str, raw: str) -> None:
