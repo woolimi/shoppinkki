@@ -263,10 +263,11 @@ function showFindProductResult(data) {
     return;
   }
   if (resultEl) {
-    resultEl.textContent = `"${data.zone_name}"으로 안내합니다.`;
+    // AI의 친절한 답변(answer)이 있으면 우선 출력, 없으면 기존 기본 문구 사용
+    resultEl.textContent = data.answer || `"${data.zone_name}"으로 안내합니다.`;
   }
-  // 패널 닫기
-  setTimeout(closeFindPanel, 1200);
+  // 긴 답변을 읽을 수 있도록 닫기 지연 시간을 2.5초로 연장
+  setTimeout(closeFindPanel, 2500);
 }
 
 // ── QR 스캔 패널 ───────────────────────────────────────────────

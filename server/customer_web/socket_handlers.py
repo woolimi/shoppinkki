@@ -209,9 +209,11 @@ def register_handlers(socketio, control_clients: dict, llm_cfg: dict):
                 "robot_id": robot_id,
                 "zone_id": zone_id,
             })
-        # 브라우저에 결과 즉시 전달
+        # 브라우저에 결과 즉시 전달 (AI 답변 포함)
         socketio.emit("find_product_result", {
             "type": "find_product_result",
             "zone_id": zone_id,
             "zone_name": zone_name,
+            "display_name": result.get("display_name", zone_name),
+            "answer": result.get("answer", f"{zone_name}으로 안내합니다.")
         })
