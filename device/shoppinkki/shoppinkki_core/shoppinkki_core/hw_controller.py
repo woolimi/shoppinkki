@@ -318,8 +318,9 @@ class HWController:
             import cv2
             from PIL import Image
 
-            # BGR → RGB 변환
+            # BGR → RGB 변환 + 좌우반전 보정
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            rgb_frame = cv2.flip(rgb_frame, 1)
             pil_img = Image.fromarray(rgb_frame).resize((self.LCD_W, self.LCD_H), Image.NEAREST)
             self._lcd_show(pil_img)
 
