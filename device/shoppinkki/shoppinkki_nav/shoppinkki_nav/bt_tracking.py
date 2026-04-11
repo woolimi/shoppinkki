@@ -29,14 +29,14 @@ try:
         LINEAR_X_MAX,
         MIN_DIST,
         N_MISS_FRAMES,
-        TARGET_AREA,
+        TARGET_SIZE,
     )
 except ImportError:
     KP_ANGLE = 0.002
-    KP_DIST = 0.0001
-    TARGET_AREA = 40000
+    KP_DIST = 0.003
+    TARGET_SIZE = 200.0
     IMAGE_WIDTH = 640
-    LINEAR_X_MAX = 0.3
+    LINEAR_X_MAX = 0.22
     ANGULAR_Z_MAX = 1.0
     MIN_DIST = 0.25
     N_MISS_FRAMES = 30
@@ -96,8 +96,13 @@ class ComputeVelocity(py_trees.behaviour.Behaviour):
         if det is None:
             return py_trees.common.Status.FAILURE
 
-        error_area = TARGET_AREA - det.area
-        self._ctx.linear_x = KP_DIST * error_area
+        import math
+
+        # sqrt(area) ≈ bbox 한 변 길이 — 거리에 역비례 (area는 역제곱)
+        # 이렇게 하면 속도 변화가 선형적이고 부드러움
+        current_size = math.sqrt(det.area)
+        error_size = TARGET_SIZE - current_size
+        self._ctx.linear_x = KP_DIST * error_size
         self._ctx.linear_x = max(0.0, min(LINEAR_X_MAX, self._ctx.linear_x))
 
         error_cx = det.cx - IMAGE_WIDTH / 2.0

@@ -5,13 +5,13 @@ Edit this file to change robot behaviour without touching logic code.
 """
 
 # ── P-Control (tracking) ──────────────────────
-TARGET_AREA: int = 40000      # target bbox area (px²) — sets follow distance
+TARGET_SIZE: float = 200.0    # target bbox side length (px) = sqrt(TARGET_AREA)
 IMAGE_WIDTH: int = 640        # camera horizontal resolution (px)
 KP_ANGLE: float = 0.002       # proportional gain for angular velocity
-KP_DIST: float = 0.0001       # proportional gain for linear velocity (per px²)
+KP_DIST: float = 0.003        # proportional gain for linear velocity (per px)
 
 # ── Velocity limits ───────────────────────────
-LINEAR_X_MAX: float = 0.3     # max linear  velocity (m/s)
+LINEAR_X_MAX: float = 0.22    # max linear  velocity (m/s) — 부드러운 추종
 ANGULAR_Z_MAX: float = 1.0    # max angular velocity (rad/s)
 
 # ── Obstacle avoidance (LiDAR) ────────────────
