@@ -75,7 +75,7 @@ class ShoppinkiMainNode(Node):
     """Main node: SM + BT Runner + HW + publishers/subscribers."""
 
     def __init__(self) -> None:
-        super().__init__('shoppinkki_main_node')
+        super().__init__(f'shoppinkki_main_{ROBOT_ID}')
         self.get_logger().info(f'Starting ShopPinkki main node (robot_id={ROBOT_ID})')
 
         # ── Zone cache (control_service REST /zones, 시작 시 1회 fetch) ──
