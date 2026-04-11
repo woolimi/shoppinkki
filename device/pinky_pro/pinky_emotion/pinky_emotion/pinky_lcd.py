@@ -73,7 +73,7 @@ class LCD():
         self._write_cmd(0xC7); self._write_data(0x92) # VCM control
         
         self._write_cmd(0x3A); self._write_data(0x55) # Pixel Format Set (RGB565)
-        self._write_cmd(0x36); self._write_data(0x20) # Memory Access Control (Landscape, RGB, Unflipped)
+        self._write_cmd(0x36); self._write_data(0xE0) # Memory Access Control (Landscape, RGB, MX+MV)
         
         self._write_cmd(0xB1); self._write_data(0x00); self._write_data(0x12)
         self._write_cmd(0xB6); self._write_data(0x0A); self._write_data(0xA2) # Display Function Control
@@ -123,7 +123,7 @@ class LCD():
         pixel_bytes = pixel.tobytes()
         
         self._write_cmd(0x36)
-        self._write_data(0x20) # Ensure Landscape RGB mode
+        self._write_data(0xE0) # Ensure Landscape RGB mode (MX+MV)
         self._set_windows(0, 0, self.w, self.h)
         
         self._write_data_buffer(pixel)
