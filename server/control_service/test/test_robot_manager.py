@@ -93,42 +93,42 @@ class TestAdminCmd:
                                    'robot_id': '54', 'x': 1.0, 'y': 0.5, 'theta': 0.0})
         assert any(c[1]['cmd'] == 'admin_goto' for c in cmds)
 
-    def test_admin_teleport_rejected_when_not_wired(self):
+    def test_admin_position_adjustment_rejected_when_not_wired(self):
         admin_msgs = []
         rm = make_rm()
         rm.push_to_admin = admin_msgs.append
-        rm.handle_admin_cmd('54', {'cmd': 'admin_teleport', 'robot_id': '54',
+        rm.handle_admin_cmd('54', {'cmd': 'admin_position_adjustment', 'robot_id': '54',
                                    'x': 0.1, 'y': 0.2, 'theta': 0.0})
-        assert any(m.get('type') == 'teleport_rejected' for m in admin_msgs)
+        assert any(m.get('type') == 'position_adjustment_rejected' for m in admin_msgs)
 
-    def test_admin_teleport_fallbacks_to_initialpose_when_no_gazebo(self):
+    def test_admin_position_adjustment_fallbacks_to_initialpose_when_no_gazebo(self):
         admin_msgs = []
         calls = []
         rm = make_rm()
         rm.push_to_admin = admin_msgs.append
         rm.publish_initialpose_at = lambda rid, x, y, th: calls.append((rid, x, y, th))
 
-        rm.handle_admin_cmd('54', {'cmd': 'admin_teleport', 'robot_id': '54',
+        rm.handle_admin_cmd('54', {'cmd': 'admin_position_adjustment', 'robot_id': '54',
                                    'x': 1.2, 'y': -0.3, 'theta': 0.4})
 
         assert calls == [('54', 1.2, -0.3, 0.4)]
-        done = [m for m in admin_msgs if m.get('type') == 'teleport_done']
+        done = [m for m in admin_msgs if m.get('type') == 'position_adjustment_done']
         assert len(done) == 1
         assert done[0].get('apply_mode') == 'amcl_only'
 
-    def test_admin_teleport_uses_initialpose_fallback_when_gazebo_call_fails(self):
+    def test_admin_position_adjustment_uses_initialpose_fallback_when_gazebo_call_fails(self):
         admin_msgs = []
         calls = []
         rm = make_rm()
         rm.push_to_admin = admin_msgs.append
-        rm.teleport_entity = lambda *_: False
+        rm.adjust_position_in_sim = lambda *_: False
         rm.publish_initialpose_at = lambda rid, x, y, th: calls.append((rid, x, y, th))
 
-        rm.handle_admin_cmd('54', {'cmd': 'admin_teleport', 'robot_id': '54',
+        rm.handle_admin_cmd('54', {'cmd': 'admin_position_adjustment', 'robot_id': '54',
                                    'x': 0.5, 'y': 0.6, 'theta': 0.7})
 
         assert calls == [('54', 0.5, 0.6, 0.7)]
-        done = [m for m in admin_msgs if m.get('type') == 'teleport_done']
+        done = [m for m in admin_msgs if m.get('type') == 'position_adjustment_done']
         assert len(done) == 1
         assert done[0].get('apply_mode') == 'amcl_only'
 

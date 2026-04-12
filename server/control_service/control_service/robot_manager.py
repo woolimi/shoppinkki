@@ -77,6 +77,11 @@ class RobotManager:
         self.publish_initialpose_at: Optional[
             Callable[[str, float, float, float], None]
         ] = None
+        # position adjustment in simulation world (Gazebo SetEntityPose)
+        self.adjust_position_in_sim: Optional[
+            Callable[[str, float, float, float], bool]
+        ] = None
+        # Backward-compat alias. Prefer `adjust_position_in_sim`.
         self.teleport_entity: Optional[Callable[[str, float, float, float], bool]] = None
         self.push_to_admin:    Optional[Callable[[dict], None]] = None
         self.push_to_web:      Optional[Callable[[str, dict], None]] = None
@@ -241,7 +246,7 @@ class RobotManager:
                 logger.warning('publish_init_pose not wired; init_pose dropped for robot=%s',
                                robot_id)
 
-        elif cmd == 'admin_teleport':
+        elif cmd in ('admin_position_adjustment', 'admin_teleport'):
             # Position adjustment from Admin UI map click.
             # - Simulation: Gazebo pose + AMCL sync
             # - Real robot: AMCL-only relocalization (no physical teleport)
@@ -252,13 +257,14 @@ class RobotManager:
             apply_mode = ''
 
             # 1) Try simulation path first (Gazebo SetEntityPose + AMCL sync in ros_node)
-            if self.teleport_entity:
+            sim_adjust = self.adjust_position_in_sim or self.teleport_entity
+            if sim_adjust:
                 try:
-                    ok = bool(self.teleport_entity(robot_id, x, y, theta))
+                    ok = bool(sim_adjust(robot_id, x, y, theta))
                     if ok:
                         apply_mode = 'sim_pose_and_amcl'
                 except Exception:
-                    logger.exception('admin_teleport failed (robot=%s)', robot_id)
+                    logger.exception('admin_position_adjustment failed (robot=%s)', robot_id)
 
             # 2) Fallback for real robot (or when Gazebo bridge is unavailable):
             #    publish map-frame initialpose only.
@@ -269,18 +275,18 @@ class RobotManager:
                     apply_mode = 'amcl_only'
                 except Exception:
                     logger.exception(
-                        'admin_teleport fallback(initialpose) failed (robot=%s)',
+                        'admin_position_adjustment fallback(initialpose) failed (robot=%s)',
                         robot_id,
                     )
 
             if not ok:
                 self._push_admin({
-                    'type': 'teleport_rejected',
+                    'type': 'position_adjustment_rejected',
                     'robot_id': robot_id,
                     'reason': 'position adjustment failed',
                 })
             else:
-                # Teleport 즉시 반영: 다음 /status 수신 전에도 UI가 위치를 갱신할 수 있도록
+                # 즉시 반영: 다음 /status 수신 전에도 UI가 위치를 갱신할 수 있도록
                 # 캐시 좌표를 먼저 업데이트하고 status를 push한다.
                 with self._lock:
                     state = self._get_or_create(robot_id)
@@ -290,7 +296,7 @@ class RobotManager:
                     state.last_seen = datetime.utcnow()
                 self._push_status(robot_id, state)
                 self._push_admin({
-                    'type': 'teleport_done',
+                    'type': 'position_adjustment_done',
                     'robot_id': robot_id,
                     'x': x, 'y': y, 'theta': theta,
                     'apply_mode': apply_mode,

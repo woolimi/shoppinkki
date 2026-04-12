@@ -93,7 +93,7 @@ class MainWindow(QMainWindow):
         # 맵 클릭 대기 중인 로봇 ID (None = 대기 없음)
         self._goto_pending_robot: str | None = None
         # 위치 재조정 맵 클릭 대기 중인 로봇 ID (None = 대기 없음)
-        self._teleport_pending_robot: str | None = None
+        self._position_adjustment_pending_robot: str | None = None
         # 로봇 상세 다이얼로그 (robot_id → dialog)
         self._detail_dialogs: dict[str, RobotDetailDialog] = {}
         self._rest_base = f'http://{rest_host}:{rest_port}'
@@ -185,7 +185,9 @@ class MainWindow(QMainWindow):
             card.command_requested.connect(self._on_command_requested)
             card.card_clicked.connect(self._on_card_clicked)
             card.goto_mode_activated.connect(self._on_goto_mode_activated)
-            card.teleport_mode_activated.connect(self._on_teleport_mode_activated)
+            card.position_adjustment_mode_activated.connect(
+                self._on_position_adjustment_mode_activated
+            )
             card_row.addWidget(card)
             self._robot_cards[rid] = card
         card_row.addStretch()
@@ -275,7 +277,7 @@ class MainWindow(QMainWindow):
             self._handle_event(data)
         elif msg_type == 'admin_goto_rejected':
             self._handle_goto_rejected(data)
-        elif msg_type == 'teleport_rejected':
+        elif msg_type in ('position_adjustment_rejected', 'teleport_rejected'):
             robot_id = str(data.get('robot_id', ''))
             QMessageBox.warning(
                 self,
@@ -283,7 +285,7 @@ class MainWindow(QMainWindow):
                 f'Robot #{robot_id} 위치 재조정이 실패했습니다.\n'
                 f'{data.get("reason", "")}',
             )
-        elif msg_type == 'teleport_done':
+        elif msg_type in ('position_adjustment_done', 'teleport_done'):
             robot_id = str(data.get('robot_id', ''))
             if robot_id:
                 # status 토픽 지연 시에도 위치 재조정 좌표를 UI에 즉시 반영
@@ -362,11 +364,11 @@ class MainWindow(QMainWindow):
     def _on_goto_mode_activated(self, robot_id: str):
         """[이동 명령] 버튼 클릭 — 맵 클릭 대기 모드 진입/취소."""
         # 위치 재조정 대기 상태 해제
-        if self._teleport_pending_robot is not None:
-            prev = self._teleport_pending_robot
-            self._teleport_pending_robot = None
+        if self._position_adjustment_pending_robot is not None:
+            prev = self._position_adjustment_pending_robot
+            self._position_adjustment_pending_robot = None
             if prev in self._robot_cards:
-                self._robot_cards[prev].set_teleport_pending(False)
+                self._robot_cards[prev].set_position_adjustment_pending(False)
 
         if not robot_id:
             # 취소
@@ -384,7 +386,7 @@ class MainWindow(QMainWindow):
             f'Robot #{robot_id} — 맵에서 목적지를 클릭하세요'
         )
 
-    def _on_teleport_mode_activated(self, robot_id: str):
+    def _on_position_adjustment_mode_activated(self, robot_id: str):
         """[위치 재조정] 버튼 클릭 — 맵 클릭 대기 모드 진입/취소."""
         # 이동 명령 대기 상태 해제
         if self._goto_pending_robot is not None:
@@ -394,18 +396,18 @@ class MainWindow(QMainWindow):
                 self._robot_cards[prev].set_goto_pending(False)
 
         if not robot_id:
-            self._teleport_pending_robot = None
+            self._position_adjustment_pending_robot = None
             self.statusBar().showMessage('위치 재조정 취소')
             return
 
         # 다른 카드의 대기 상태 해제
         for rid, card in self._robot_cards.items():
             if rid != robot_id:
-                card.set_teleport_pending(False)
+                card.set_position_adjustment_pending(False)
 
-        self._teleport_pending_robot = robot_id
+        self._position_adjustment_pending_robot = robot_id
         if robot_id in self._robot_cards:
-            self._robot_cards[robot_id].set_teleport_pending(True)
+            self._robot_cards[robot_id].set_position_adjustment_pending(True)
         self.statusBar().showMessage(
             f'Robot #{robot_id} — 맵에서 재조정할 위치를 클릭하세요'
         )
@@ -413,10 +415,10 @@ class MainWindow(QMainWindow):
     def _on_map_clicked(self, x: float, y: float, theta: float):
         """맵 클릭+드래그: 대기 중인 로봇에 admin_goto(위치+방향) 전송."""
         # 위치 재조정: 기존 admin_goto 흐름과 분리 (시뮬 전용)
-        tr = self._teleport_pending_robot
+        tr = self._position_adjustment_pending_robot
         if tr is not None:
             payload = {
-                'cmd': 'admin_teleport',
+                'cmd': 'admin_position_adjustment',
                 'robot_id': tr,
                 'x': round(x, 4),
                 'y': round(y, 4),
@@ -425,11 +427,12 @@ class MainWindow(QMainWindow):
             self._tcp.send(payload)
             import math as _math
             self.statusBar().showMessage(
-                f'Robot #{tr} → admin_teleport ({x:.3f}, {y:.3f}, {_math.degrees(theta):.0f}°) 전송'
+                f'Robot #{tr} → admin_position_adjustment '
+                f'({x:.3f}, {y:.3f}, {_math.degrees(theta):.0f}°) 전송'
             )
-            self._teleport_pending_robot = None
+            self._position_adjustment_pending_robot = None
             if tr in self._robot_cards:
-                self._robot_cards[tr].set_teleport_pending(False)
+                self._robot_cards[tr].set_position_adjustment_pending(False)
             return
 
         rid = self._goto_pending_robot

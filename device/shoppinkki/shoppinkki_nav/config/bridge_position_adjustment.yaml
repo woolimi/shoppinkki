@@ -1,4 +1,4 @@
-# ROS-Gazebo service bridge — admin teleport (test only)
+# ROS-Gazebo service bridge — admin position adjustment (simulation)
 #
 # World-level service (not per-robot namespace):
 #   /world/shop/set_pose

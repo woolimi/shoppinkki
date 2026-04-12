@@ -31,7 +31,7 @@
                   버튼 클릭 → 맵 클릭 대기 모드 진입/취소 토글
                   맵 클릭은 MainWindow에서 처리하여 admin_goto 전송
     [잠금 해제] → staff_resolved   (is_locked_return=True 또는 HALTED)
-    [위치 재조정] → admin_teleport 맵 클릭 (IDLE만, 시뮬)
+    [위치 재조정] → admin_position_adjustment 맵 클릭 (IDLE만)
     [위치 초기화] → init_pose      (CHARGING·IDLE만, Gazebo/AMCL 초기 위치 설정)
 
 시그널:
@@ -75,8 +75,8 @@ _RESUME_MODES = {'WAITING', 'SEARCHING'}
 _RETURNING_MODES = {'TRACKING', 'TRACKING_CHECKOUT', 'WAITING', 'SEARCHING'}
 # 위치 초기화 가능 모드 (시뮬/실물 AMCL 초기 위치 설정)
 _INIT_POSE_MODES = {'CHARGING', 'IDLE'}
-# admin_teleport — 시뮬에서 맵 좌표로 pose 맞추기 (내부 명칭은 그대로)
-_TELEPORT_BTN_LABEL = '위치 재조정'
+# admin_position_adjustment — 맵 좌표 기준 위치 재조정 (시뮬/실물 공통)
+_POSITION_ADJUSTMENT_BTN_LABEL = '위치 재조정'
 
 
 class RobotCard(QFrame):
@@ -85,7 +85,7 @@ class RobotCard(QFrame):
     command_requested = pyqtSignal(str, dict)
     card_clicked = pyqtSignal(str)       # robot_id
     goto_mode_activated = pyqtSignal(str)  # robot_id or '' (cancel)
-    teleport_mode_activated = pyqtSignal(str)  # robot_id or '' (cancel)
+    position_adjustment_mode_activated = pyqtSignal(str)  # robot_id or '' (cancel)
 
     def __init__(self, robot_id: str, parent=None):
         super().__init__(parent)
@@ -93,7 +93,7 @@ class RobotCard(QFrame):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._current_state: dict = {}
         self._goto_pending = False  # 맵 클릭 대기 상태
-        self._teleport_pending = False  # 위치 재조정 맵 클릭 대기 상태
+        self._position_adjustment_pending = False  # 위치 재조정 맵 클릭 대기 상태
 
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setFrameShadow(QFrame.Shadow.Raised)
@@ -174,12 +174,12 @@ class RobotCard(QFrame):
         self._btn_staff_resolved.setStyleSheet('color: #8e44ad; font-weight: bold;')
         self._btn_staff_resolved.clicked.connect(self._on_staff_resolved)
 
-        self._btn_teleport = QPushButton(_TELEPORT_BTN_LABEL)
-        self._btn_teleport.setToolTip(
-            '시뮬: 맵 클릭 후 Gazebo·AMCL 위치 재설정 (admin_teleport)'
+        self._btn_position_adjustment = QPushButton(_POSITION_ADJUSTMENT_BTN_LABEL)
+        self._btn_position_adjustment.setToolTip(
+            '맵 클릭 후 위치 재조정 실행 (admin_position_adjustment)'
         )
-        self._btn_teleport.setStyleSheet('color: #d35400; font-weight: bold;')
-        self._btn_teleport.clicked.connect(self._on_teleport)
+        self._btn_position_adjustment.setStyleSheet('color: #d35400; font-weight: bold;')
+        self._btn_position_adjustment.clicked.connect(self._on_position_adjustment)
         self._btn_init_pose = QPushButton('위치 초기화')
         self._btn_init_pose.setToolTip('AMCL 초기 위치 설정 (CHARGING·IDLE 상태에서만 활성화)')
         self._btn_init_pose.setStyleSheet('color: #2980b9;')
@@ -193,24 +193,24 @@ class RobotCard(QFrame):
         grid.addWidget(self._btn_admin_goto, 0, 1)
         grid.addWidget(self._btn_staff_resolved, 0, 2)
         # 2행: 위치 재조정 | (빈칸) | 위치 초기화
-        grid.addWidget(self._btn_teleport, 1, 0)
+        grid.addWidget(self._btn_position_adjustment, 1, 0)
         grid.addWidget(QLabel(''), 1, 1)
         grid.addWidget(self._btn_init_pose, 1, 2)
         layout.addLayout(grid)
 
         self._update_button_states()
 
-    def _on_teleport(self):
+    def _on_position_adjustment(self):
         """[위치 재조정] 버튼 클릭 — 맵 클릭 대기 모드 진입/취소."""
         self.set_goto_pending(False)
-        if self._teleport_pending:
-            self._teleport_pending = False
-            self._btn_teleport.setText(_TELEPORT_BTN_LABEL)
-            self.teleport_mode_activated.emit('')
+        if self._position_adjustment_pending:
+            self._position_adjustment_pending = False
+            self._btn_position_adjustment.setText(_POSITION_ADJUSTMENT_BTN_LABEL)
+            self.position_adjustment_mode_activated.emit('')
         else:
-            self._teleport_pending = True
-            self._btn_teleport.setText('취소')
-            self.teleport_mode_activated.emit(self._robot_id)
+            self._position_adjustment_pending = True
+            self._btn_position_adjustment.setText('취소')
+            self.position_adjustment_mode_activated.emit(self._robot_id)
 
     def update_state(self, state: dict):
         """상태 딕셔너리로 카드 갱신."""
@@ -267,13 +267,13 @@ class RobotCard(QFrame):
             self._btn_admin_goto.setStyleSheet('')
         self._update_button_states()
 
-    def set_teleport_pending(self, pending: bool):
+    def set_position_adjustment_pending(self, pending: bool):
         """위치 재조정 맵 클릭 대기 상태 설정."""
-        self._teleport_pending = pending
+        self._position_adjustment_pending = pending
         if pending:
-            self._btn_teleport.setText('취소')
+            self._btn_position_adjustment.setText('취소')
         else:
-            self._btn_teleport.setText(_TELEPORT_BTN_LABEL)
+            self._btn_position_adjustment.setText(_POSITION_ADJUSTMENT_BTN_LABEL)
 
     def _update_button_states(self):
         mode = self._current_state.get('mode', 'OFFLINE')
@@ -285,8 +285,8 @@ class RobotCard(QFrame):
         self._btn_force_terminate.setEnabled(mode not in _FORCE_TERMINATE_DISABLED)
         # admin_goto: IDLE이면 항상 활성 (맵 클릭 대기 모드 진입/취소)
         self._btn_admin_goto.setEnabled(mode == 'IDLE')
-        # admin_teleport: 시뮬 관제 기능 (안전 위해 IDLE에서만)
-        self._btn_teleport.setEnabled(mode == 'IDLE')
+        # admin_position_adjustment: 위치 재조정 (안전 위해 IDLE에서만)
+        self._btn_position_adjustment.setEnabled(mode == 'IDLE')
         # staff_resolved: HALTED 또는 is_locked_return
         self._btn_staff_resolved.setEnabled(
             mode == 'HALTED' or is_locked_return

@@ -88,7 +88,9 @@ class ControlServiceNode:
         robot_manager.publish_cmd = self.publish_cmd
         robot_manager.publish_init_pose = self.publish_init_pose
         robot_manager.publish_initialpose_at = self.publish_initialpose_at
-        robot_manager.teleport_entity = self.teleport_entity
+        robot_manager.adjust_position_in_sim = self.adjust_position_in_sim
+        # Backward compatibility for older call sites
+        robot_manager.teleport_entity = self.adjust_position_in_sim
 
         try:
             from ros_gz_interfaces.srv import SetEntityPose
@@ -160,8 +162,8 @@ class ControlServiceNode:
     def get_node(self):
         return self._node
 
-    def teleport_entity(self, robot_id: str, x: float, y: float, theta: float) -> bool:
-        """Teleport Gazebo entity (simulation only).
+    def adjust_position_in_sim(self, robot_id: str, x: float, y: float, theta: float) -> bool:
+        """Adjust Gazebo entity position (simulation only).
 
         Input x,y,theta are map-frame coordinates from Admin UI MapWidget.
         They are converted to Gazebo world coordinates when possible.
@@ -178,13 +180,13 @@ class ControlServiceNode:
             gz = map_to_gazebo(x, y, theta)
             gx, gy, gyaw = float(gz['x']), float(gz['y']), float(gz['yaw'])
         except Exception:
-            logger.debug('teleport: map_to_gazebo unavailable; using identity')
+            logger.debug('position_adjustment: map_to_gazebo unavailable; using identity')
 
         try:
             from geometry_msgs.msg import Pose
             from ros_gz_interfaces.msg import Entity
         except Exception as e:
-            logger.warning('teleport: missing message types: %s', e)
+            logger.warning('position_adjustment: missing message types: %s', e)
             return False
 
         # NOTE:
@@ -194,7 +196,7 @@ class ControlServiceNode:
         # 로 성공 여부를 판정한다.
         svc_name = f'/world/{self._gz_world}/set_pose'
         if not self._set_pose_client.wait_for_service(timeout_sec=0.2):
-            logger.warning('teleport: %s not ready (will try call anyway)', svc_name)
+            logger.warning('position_adjustment: %s not ready (will try call anyway)', svc_name)
 
         req = self._SetEntityPose.Request()
         req.entity = Entity(name=model_name, type=Entity.MODEL)
@@ -224,15 +226,21 @@ class ControlServiceNode:
             future.add_done_callback(_done_cb)
 
             if not done_evt.wait(timeout=1.5):
-                logger.warning('teleport: timeout waiting for service response (%s)', svc_name)
+                logger.warning(
+                    'position_adjustment: timeout waiting for service response (%s)',
+                    svc_name,
+                )
                 return False
 
             if out.get('err') is not None:
-                logger.exception('teleport: service call failed', exc_info=out['err'])
+                logger.exception(
+                    'position_adjustment: service call failed',
+                    exc_info=out['err'],
+                )
                 return False
 
             ok = bool(out.get('ok', False))
-            logger.info('teleport: %s → (%.3f, %.3f, %.3f) success=%s',
+            logger.info('position_adjustment: %s → (%.3f, %.3f, %.3f) success=%s',
                         model_name, gx, gy, gyaw, ok)
             if ok:
                 # Gazebo pose 이동 후 AMCL도 같은 map pose로 즉시 동기화한다.
@@ -240,8 +248,12 @@ class ControlServiceNode:
                 self._publish_initialpose(robot_id, x, y, theta)
             return ok
         except Exception:
-            logger.exception('teleport: unexpected error')
+            logger.exception('position_adjustment: unexpected error')
             return False
+
+    def teleport_entity(self, robot_id: str, x: float, y: float, theta: float) -> bool:
+        """Backward-compatible alias for adjust_position_in_sim()."""
+        return self.adjust_position_in_sim(robot_id, x, y, theta)
 
     def _on_status(self, robot_id: str, raw: str) -> None:
         try:
