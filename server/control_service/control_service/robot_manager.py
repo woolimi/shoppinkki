@@ -596,6 +596,36 @@ class RobotManager:
         else:
             logger.warning('publish_cmd not wired; dropping cmd=%s', payload.get('cmd'))
 
+    def _enrich_status_for_web(
+        self, robot_id: str, state: RobotState, msg: dict
+    ) -> dict:
+        """Web-only: add my_robot / other_robots for mart map; admin TCP stays flat."""
+        web = dict(msg)
+        web['my_robot'] = {
+            'robot_id': state.robot_id,
+            'pos_x': state.pos_x,
+            'pos_y': state.pos_y,
+            'yaw': state.yaw,
+            'mode': state.mode,
+            'battery': state.battery,
+            'is_locked_return': state.is_locked_return,
+            'follow_disabled': state.follow_disabled,
+            'bbox': state.bbox,
+        }
+        others: List[dict] = []
+        with self._lock:
+            for rid, st in self._states.items():
+                if rid == robot_id:
+                    continue
+                others.append({
+                    'robot_id': rid,
+                    'pos_x': st.pos_x,
+                    'pos_y': st.pos_y,
+                    'mode': st.mode,
+                })
+        web['other_robots'] = others
+        return web
+
     def _push_status(self, robot_id: str, state: RobotState) -> None:
         msg = {
             'type': 'status',
@@ -610,7 +640,7 @@ class RobotManager:
             'bbox': state.bbox,
         }
         self._push_admin(msg)
-        self._push_web(robot_id, msg)
+        self._push_web(robot_id, self._enrich_status_for_web(robot_id, state, msg))
 
     def _push_admin(self, msg: dict) -> None:
         if self.push_to_admin:

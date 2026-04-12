@@ -89,6 +89,18 @@ const MapRenderer = (() => {
   function updateFromStatus(statusMsg) {
     if (statusMsg.my_robot) {
       myRobot = statusMsg.my_robot;
+    } else if (
+      statusMsg.robot_id != null &&
+      statusMsg.pos_x != null &&
+      statusMsg.pos_y != null &&
+      myRobotId != null &&
+      String(statusMsg.robot_id) === myRobotId
+    ) {
+      myRobot = {
+        robot_id: String(statusMsg.robot_id),
+        pos_x: statusMsg.pos_x,
+        pos_y: statusMsg.pos_y,
+      };
     }
     if (Array.isArray(statusMsg.other_robots)) {
       otherRobots = statusMsg.other_robots;

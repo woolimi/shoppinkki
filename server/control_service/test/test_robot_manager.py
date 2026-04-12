@@ -24,6 +24,27 @@ def make_rm():
 
 
 class TestStatusUpdate:
+    def test_status_admin_flat_web_has_fleet_snapshot(self):
+        admin_msgs = []
+        web_msgs = []
+        rm = make_rm()
+        rm.push_to_admin = admin_msgs.append
+        rm.push_to_web = lambda rid, msg: web_msgs.append((rid, msg))
+        rm.on_status('18', {'mode': 'IDLE', 'pos_x': 3.0, 'pos_y': 4.0,
+                            'battery': 90.0, 'is_locked_return': False})
+        rm.on_status('54', {'mode': 'TRACKING', 'pos_x': 1.0, 'pos_y': 2.0,
+                            'battery': 85.0, 'is_locked_return': False})
+        admin_status = [m for m in admin_msgs if m.get('type') == 'status'][-1]
+        assert 'my_robot' not in admin_status
+        assert 'other_robots' not in admin_status
+        rid, w = [x for x in web_msgs if x[1].get('type') == 'status'][-1]
+        assert rid == '54'
+        assert w['my_robot']['robot_id'] == '54'
+        assert w['my_robot']['pos_x'] == 1.0
+        assert len(w['other_robots']) == 1
+        assert w['other_robots'][0]['robot_id'] == '18'
+        assert w['other_robots'][0]['pos_x'] == 3.0
+
     def test_mode_updated(self):
         rm = make_rm()
         rm.on_status('54', {'mode': 'TRACKING', 'pos_x': 1.0, 'pos_y': 2.0,
