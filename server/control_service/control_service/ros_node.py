@@ -50,7 +50,7 @@ class ControlServiceNode:
 
         self._rm = robot_manager
         self._publishers: dict = {}
-        self._gz_world = os.environ.get('GZ_WORLD_NAME', 'default')
+        self._gz_world = os.environ.get('GZ_WORLD_NAME', 'shop')
         self._set_pose_client = None
         self._SetEntityPose = None
 
