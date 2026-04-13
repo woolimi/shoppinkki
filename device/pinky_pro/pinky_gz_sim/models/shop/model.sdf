@@ -1,10 +1,12 @@
 <?xml version="1.0" ?>
 <sdf version="1.8">
   <!--
-    Mesh collision → boxes. Matrices from shop.dae applied as row-major (Blender export).
-    Perimeter walls + divider (2 boxes) + section_* / sectinon_* AABB (row-major DAE matrices).
-    Collision height z=0.35 m (pose z=0.175) so Pinky hits shelves; floor = shop.world ground_plane.
-    Map: 1.88 x 1.4 m (scaled x by 1.044444 from original 1.8 x 1.4 m)
+    Shop map with corrected dimensions and collision boxes.
+    Origin: Inner corner of west and south walls (bottom-left)
+    Map: 1.88 x 1.41 m
+    Wall thickness: 0.02 m (2cm)
+    Divider thickness: 0.005 m (5mm)
+    Collision height z=0.35 m (pose z=0.175)
   -->
   <model name="shop">
     <static>true</static>
@@ -19,115 +21,157 @@
         </geometry>
       </visual>
 
-      <!-- Perimeter walls -->
+      <!-- ===== PERIMETER WALLS ===== -->
+      <!-- South wall: Y = -0.01, thickness 0.02, length 1.88 -->
       <collision name="wall_south">
-        <pose>0.938101 0.000134 0.175 0 0 0</pose>
+        <pose>0.94 -0.01 0.175 0 0 0</pose>
         <geometry>
           <box>
-            <size>1.852200 0.00998 0.35</size>
+            <size>1.88 0.02 0.35</size>
           </box>
         </geometry>
       </collision>
+
+      <!-- North wall: Y = 1.42, thickness 0.02, length 1.88 -->
       <collision name="wall_north">
-        <pose>0.938101 1.397034 0.175 0 0 0</pose>
+        <pose>0.94 1.42 0.175 0 0 0</pose>
         <geometry>
           <box>
-            <size>1.852200 0.00998 0.35</size>
+            <size>1.88 0.02 0.35</size>
           </box>
         </geometry>
       </collision>
+
+      <!-- West wall: X = -0.01, thickness 0.02, height 1.41 -->
       <collision name="wall_west">
-        <pose>0.012001 0.698584 0.175 0 0 0</pose>
+        <pose>-0.01 0.705 0.175 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.010423 1.396900 0.35</size>
+            <size>0.02 1.41 0.35</size>
           </box>
         </geometry>
       </collision>
+
+      <!-- East wall: X = 1.89, thickness 0.02, height 1.41 -->
       <collision name="wall_east">
-        <pose>1.864201 0.698584 0.175 0 0 0</pose>
+        <pose>1.89 0.705 0.175 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.010423 1.396900 0.35</size>
+            <size>0.02 1.41 0.35</size>
           </box>
         </geometry>
       </collision>
 
-      <!-- divider: L = thin bar along +x + thin bar along +y (local AABBs → same DAE matrix) -->
-      <collision name="divider_arm_y">
-        <pose>1.440 0.306 0.175 0 0 0</pose>
-        <geometry>
-          <box>
-            <size>0.02 0.199596 0.35</size>
-          </box>
-        </geometry>
-      </collision>
-
-      <!-- section_* (DAE node sectinon_meat = meat) -->
-      <collision name="section_meat">
-        <pose>0.277776 1.445972 0.175 0 0 0</pose>
-        <geometry>
-          <box>
-            <size>0.553494 0.099798 0.35</size>
-          </box>
-        </geometry>
-      </collision>
+      <!-- ===== NORTH WALL PRODUCTS ===== -->
+      <!-- North wall outer face Y=1.43, sections protrude outward (north) -->
+      <!-- Seafood: 0~54cm, depth 5cm -->
       <collision name="section_seafood">
-        <pose>0.922043 1.445972 0.175 0 0 0</pose>
+        <pose>0.27 1.435 0.175 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.553946 0.099798 0.35</size>
+            <size>0.54 0.05 0.35</size>
           </box>
         </geometry>
       </collision>
-      <collision name="section_frizer">
-        <pose>0.610 0.762248 0.175 0 0 0</pose>
+
+      <!-- Meat: 61~113cm, depth 5cm -->
+      <collision name="section_meat">
+        <pose>0.87 1.435 0.175 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.050 0.419503 0.35</size>
+            <size>0.52 0.05 0.35</size>
           </box>
         </geometry>
       </collision>
-      <collision name="section_refriger">
-        <pose>0.560 0.762248 0.175 0 0 0</pose>
-        <geometry>
-          <box>
-            <size>0.050 0.419503 0.35</size>
-          </box>
-        </geometry>
-      </collision>
-      <collision name="section_electronics">
-        <pose>-0.051088 0.767819 0.175 0 0 0</pose>
-        <geometry>
-          <box>
-            <size>0.104233 0.419503 0.35</size>
-          </box>
-        </geometry>
-      </collision>
-      <collision name="section_snacks">
-        <pose>-0.051088 1.187322 0.175 0 0 0</pose>
-        <geometry>
-          <box>
-            <size>0.104233 0.419503 0.35</size>
-          </box>
-        </geometry>
-      </collision>
+
+      <!-- Vegetable: 130~189cm, depth 5cm -->
       <collision name="section_vegetable">
-        <pose>1.585925 1.445972 0.175 0 0 0</pose>
+        <pose>1.595 1.435 0.175 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.564466 0.099798 0.35</size>
+            <size>0.59 0.05 0.35</size>
           </box>
         </geometry>
       </collision>
+
+      <!-- ===== WEST WALL PRODUCTS ===== -->
+      <!-- West wall outer face X=-0.02, sections protrude outward (west) -->
+      <!-- Snacks: Y=99~141cm, depth 5cm -->
+      <collision name="section_snacks">
+        <pose>-0.045 1.20 0.175 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.05 0.42 0.35</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <!-- Electronics: Y=57~99cm, depth 5cm -->
+      <collision name="section_electronics">
+        <pose>-0.045 0.78 0.175 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.05 0.42 0.35</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <!-- ===== EAST WALL PRODUCTS ===== -->
+      <!-- Restroom: Y=99~141cm, depth 5cm -->
+      <collision name="section_restroom">
+        <pose>1.915 1.20 0.175 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.05 0.42 0.35</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <!-- ===== INTERIOR STRUCTURES ===== -->
+      <!-- Divider: X=143.75~144.25cm, Y=20~40cm, thickness 0.5cm -->
+      <collision name="divider">
+        <pose>1.3975 0.30 0.175 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.005 0.20 0.35</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <!-- Bread section: X=53~58cm, Y=56~98cm -->
+      <collision name="section_bread">
+        <pose>0.555 0.77 0.175 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.05 0.42 0.35</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <!-- Processed food section: X=58~63cm, Y=56~98cm -->
+      <collision name="section_processed">
+        <pose>0.605 0.77 0.175 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.05 0.42 0.35</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <!-- Beverage section: X=116~126cm, Y=77~98cm -->
       <collision name="section_beverage">
-        <pose>1.195 0.844 0.175 0 0 0</pose>
+        <pose>1.21 0.875 0.175 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.100 0.209576 0.35</size>
+            <size>0.10 0.21 0.35</size>
           </box>
         </geometry>
       </collision>
+
+      <!-- ===== SOUTH WALL PARKING (no collision, visual only) ===== -->
+      <!-- p1: X=58~82cm, Y=0~20cm (no collision, height=0) -->
+      <!-- p2: X=82~106cm, Y=0~20cm (no collision, height=0) -->
+
     </link>
   </model>
 </sdf>
