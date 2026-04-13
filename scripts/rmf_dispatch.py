@@ -42,15 +42,15 @@ ZONE_WAYPOINTS = {
 
 # waypoint 좌표 (nav_graph 기준)
 WAYPOINT_COORDS = {
-    '가전제품1': (0.489, -0.057), '가전제품2': (0.749, -0.057),
-    '과자1': (0.950, -0.057),
-    '해산물2': (1.101, -0.300),
-    '육류1': (1.101, -0.606), '육류2': (1.101, -0.899),
-    '채소1': (1.101, -1.224),
-    '음료1': (0.699, -0.899), '음료2': (0.699, -1.224),
-    '빵1': (0.544, -0.300), '빵2': (0.699, -0.300),
-    '가공식품1': (0.699, -0.606), '가공식품2': (0.544, -0.606),
-    'P1': (0.0, -0.606), 'P2': (0.0, -0.899),
+    '가전제품1': (0.489, -0.12), '가전제품2': (0.749, -0.12),
+    '과자1': (0.950, -0.12),
+    '해산물2': (1.05, -0.300),
+    '육류1': (1.05, -0.606), '육류2': (1.05, -0.899),
+    '채소1': (1.05, -1.224),
+    '음료1': (0.76, -0.899), '음료2': (0.76, -1.224),
+    '빵1': (0.42, -0.300), '빵2': (0.76, -0.300),
+    '가공식품1': (0.76, -0.606), '가공식품2': (0.42, -0.606),
+    'P1': (0.12, -0.606), 'P2': (0.12, -0.899),
 }
 
 QOS = QoSProfile(
@@ -60,7 +60,7 @@ QOS = QoSProfile(
 )
 
 REST_BASE = 'http://localhost:8081'
-OCCUPY_DIST = 0.15  # 이 거리 이내면 "점유" 판정
+OCCUPY_DIST = 0.25  # 이 거리 이내면 "점유" 판정
 
 
 def get_robot_positions() -> dict[str, tuple[float, float]]:
@@ -80,46 +80,83 @@ def get_robot_positions() -> dict[str, tuple[float, float]]:
     return positions
 
 
+def get_robot_states() -> dict[str, dict]:
+    """REST API로 모든 로봇 상태(위치 + mode + 목적지)를 조회."""
+    states = {}
+    for rid in ['54', '18']:
+        try:
+            resp = requests.get(f'{REST_BASE}/robot/{rid}/status', timeout=2)
+            if resp.status_code == 200:
+                data = resp.json()
+                states[f'pinky_{rid}'] = {
+                    'x': float(data.get('pos_x', 0)),
+                    'y': float(data.get('pos_y', 0)),
+                    'mode': data.get('mode', ''),
+                    'dest_x': data.get('dest_x'),
+                    'dest_y': data.get('dest_y'),
+                }
+        except Exception:
+            pass
+    return states
+
+
 def pick_best_waypoint(zone: str, robot_name: str) -> str:
-    """구역 내 빈 waypoint를 선택. 다른 로봇이 점유 중이면 대안 선택."""
+    """구역 내 빈 waypoint를 선택. 다른 로봇이 점유 중이거나 이동 중이면 대안 선택."""
     candidates = ZONE_WAYPOINTS.get(zone)
     if not candidates:
         print(f'[WARN] 알 수 없는 구역: {zone}')
-        return zone  # fallback: zone 이름 자체를 waypoint로
+        return zone
 
     if len(candidates) == 1:
         return candidates[0]
 
-    # 로봇 위치 조회
-    positions = get_robot_positions()
-    other_robots = {k: v for k, v in positions.items() if k != robot_name}
+    states = get_robot_states()
+    other_robots = {k: v for k, v in states.items() if k != robot_name}
 
-    # 각 후보 waypoint에 대해 다른 로봇과의 거리 확인
     occupied = set()
-    for wp_name in candidates:
-        wp_coord = WAYPOINT_COORDS.get(wp_name)
-        if wp_coord is None:
-            continue
-        for r_name, r_pos in other_robots.items():
+    for r_name, r_state in other_robots.items():
+        # 1) 현재 위치 기반: 가장 가까운 waypoint 1개 점유
+        r_pos = (r_state['x'], r_state['y'])
+        closest_wp = None
+        closest_dist = float('inf')
+        for wp_name in candidates:
+            wp_coord = WAYPOINT_COORDS.get(wp_name)
+            if wp_coord is None:
+                continue
             dist = math.sqrt((wp_coord[0] - r_pos[0])**2 +
                              (wp_coord[1] - r_pos[1])**2)
-            if dist <= OCCUPY_DIST:
-                occupied.add(wp_name)
-                print(f'  [{wp_name}] 점유 중 ({r_name}, dist={dist:.3f}m)')
+            if dist < closest_dist:
+                closest_dist = dist
+                closest_wp = wp_name
+        if closest_wp and closest_dist <= OCCUPY_DIST:
+            occupied.add(closest_wp)
+            print(f'  [{closest_wp}] 점유 중 ({r_name}, dist={closest_dist:.3f}m)')
 
-    # 비점유 waypoint 선택
+        # 2) 목적지 기반: GUIDING 상태에서 이동 중인 목적지도 점유
+        dest_x = r_state.get('dest_x')
+        dest_y = r_state.get('dest_y')
+        if dest_x is not None and dest_y is not None and r_state['mode'] == 'GUIDING':
+            for wp_name in candidates:
+                wp_coord = WAYPOINT_COORDS.get(wp_name)
+                if wp_coord is None:
+                    continue
+                dist = math.sqrt((wp_coord[0] - dest_x)**2 +
+                                 (wp_coord[1] - dest_y)**2)
+                if dist <= OCCUPY_DIST:
+                    occupied.add(wp_name)
+                    print(f'  [{wp_name}] 이동 중 ({r_name} → dest, dist={dist:.3f}m)')
+
     free = [wp for wp in candidates if wp not in occupied]
     if free:
         chosen = free[0]
         print(f'  → {chosen} (비점유)')
     else:
-        # 모두 점유: 요청 로봇에서 가장 가까운 waypoint
-        my_pos = positions.get(robot_name, (0, 0))
-        chosen = min(candidates, key=lambda wp: math.sqrt(
-            (WAYPOINT_COORDS[wp][0] - my_pos[0])**2 +
-            (WAYPOINT_COORDS[wp][1] - my_pos[1])**2
-        ))
-        print(f'  → {chosen} (모두 점유, 최근접 선택)')
+        chosen = max(candidates, key=lambda wp: min(
+            math.sqrt((WAYPOINT_COORDS[wp][0] - s['x'])**2 +
+                      (WAYPOINT_COORDS[wp][1] - s['y'])**2)
+            for s in other_robots.values()
+        ) if other_robots else 0)
+        print(f'  → {chosen} (모두 점유, 최대 이격 선택)')
 
     return chosen
 

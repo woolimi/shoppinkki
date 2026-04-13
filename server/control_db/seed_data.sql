@@ -2,19 +2,19 @@
 
 -- ZONE
 INSERT INTO zone (zone_id, zone_name, zone_type, waypoint_x, waypoint_y, waypoint_theta) VALUES
-(1,   '가전제품',  'product',  0.619, -0.057,  0.0),
-(2,   '과자',     'product',  0.950, -0.057,  0.0),
-(3,   '해산물',   'product',  1.101, -0.300,  3.1416),
-(4,   '육류',     'product',  1.101, -0.752,  3.1416),
-(5,   '채소',     'product',  1.101, -1.224,  3.1416),
-(6,   '음료',     'product',  0.699, -0.899,  0.0),
-(7,   '베이커리', 'product',  0.622, -0.300,  0.0),
-(8,   '음식',     'product',  0.622, -0.606,  0.0),
+(1,   '가전제품',  'product',  0.619, -0.12,   0.0),
+(2,   '과자',     'product',  0.950, -0.12,   0.0),
+(3,   '해산물',   'product',  1.05,  -0.300,  3.1416),
+(4,   '육류',     'product',  1.05,  -0.752,  3.1416),
+(5,   '채소',     'product',  1.05,  -1.224,  3.1416),
+(6,   '음료',     'product',  0.76,  -0.899,  0.0),
+(7,   '베이커리', 'product',  0.42,  -0.300,  0.0),
+(8,   '음식',     'product',  0.42,  -0.606,  0.0),
 (100, '화장실',   'special',  0.812, -1.536,  1.5708),
-(110, '입구',     'special', 0.05, -0.057,  0.0),
-(120, '출구',     'special', 0.05, -1.547,  0.0),
-(140, '충전소_18(P1)','special', 0.0, -0.606, 0.0),
-(141, '충전소_54(P2)','special', 0.0, -0.899, 0.0),
+(110, '입구',     'special', 0.12,  -0.12,   0.0),
+(120, '출구',     'special', 0.12,  -1.547,  0.0),
+(140, '충전소_18(P1)','special', 0.12, -0.606, 0.0),
+(141, '충전소_54(P2)','special', 0.12, -0.899, 0.0),
 (150, '결제 구역','special',  0.186, -1.544,  1.5708)
 ON CONFLICT (zone_id) DO UPDATE SET
     zone_name      = EXCLUDED.zone_name,
@@ -127,39 +127,39 @@ ON CONFLICT (user_id, card_alias) DO NOTHING;
 
 -- FLEET_WAYPOINT (shop_nav_graph.yaml 28개 버텍스)
 INSERT INTO fleet_waypoint (idx, name, x, y, theta, zone_id, is_charger, is_parking, pickup_zone, holding_point) VALUES
--- 왼쪽 복도 (x=0.05, 벽에서 5cm)
-( 0, '입구1',          0.05,  -0.057, 0,       110,  false, false, false, false),
-( 1, '입구2',          0.05,  -0.300, 0,       NULL, false, false, false, false),
-( 2, 'P1',             0.0,   -0.606, 0.0,     140,  true,  true,  false, false),  -- 충전소 (벽)
-( 3, 'P2',             0.0,   -0.899, 0.0,     141,  true,  true,  false, false),  -- 충전소 (벽)
-( 4, '출구2',          0.05,  -1.402, 0,       NULL, false, false, false, false),
-( 5, '출구1',          0.05,  -1.547, 0,       120,  false, false, false, false),
--- 위쪽 복도 (y=-0.057, 벽에서 5cm)
-( 6, '가전제품1',      0.489, -0.057, -1.5708, 1,    false, false, true,  false),
-( 7, '가전제품2',      0.749, -0.057, -1.5708, 1,    false, false, true,  false),
-( 8, '과자1',          0.950, -0.057, -1.5708, 2,    false, false, true,  false),
-( 9, '과자_해산물',    1.101, -0.057, 0,       NULL, false, false, false, false),
--- 오른쪽 복도 (x=1.101, 벽에서 5cm)
-(10, '해산물2',        1.101, -0.300, 3.1416,  3,    false, false, true,  false),
-(11, '육류1',          1.101, -0.606, 3.1416,  4,    false, false, true,  false),
-(12, '육류2',          1.101, -0.899, 3.1416,  4,    false, false, true,  false),
-(13, '채소1',          1.101, -1.224, 3.1416,  5,    false, false, true,  false),
-(14, '채소_화장실',    1.101, -1.536, 0,       NULL, false, false, false, false),
--- 아래쪽 복도 (벽에서 5cm)
+-- 왼쪽 복도 (x=0.12, 벽에서 12cm)
+( 0, '입구1',          0.12,  -0.12,  0,       110,  false, false, false, true),
+( 1, '입구2',          0.12,  -0.300, 0,       NULL, false, false, false, true),
+( 2, 'P1',             0.12,  -0.606, 3.1416,  140,  true,  true,  false, false),
+( 3, 'P2',             0.12,  -0.899, 3.1416,  141,  true,  true,  false, false),
+( 4, '출구2',          0.12,  -1.402, 0,       NULL, false, false, false, true),
+( 5, '출구1',          0.12,  -1.547, 0,       120,  false, false, false, true),
+-- 위쪽 복도 (y=-0.12, 벽에서 12cm)
+( 6, '가전제품1',      0.489, -0.12,  -1.5708, 1,    false, false, true,  false),
+( 7, '가전제품2',      0.749, -0.12,  -1.5708, 1,    false, false, true,  false),
+( 8, '과자1',          0.950, -0.12,  -1.5708, 2,    false, false, true,  false),
+( 9, '과자_해산물',    1.05,  -0.12,  0,       NULL, false, false, false, false),
+-- 오른쪽 복도 (x=1.05, 벽에서 10cm)
+(10, '해산물2',        1.05,  -0.300, 3.1416,  3,    false, false, true,  false),
+(11, '육류1',          1.05,  -0.606, 3.1416,  4,    false, false, true,  false),
+(12, '육류2',          1.05,  -0.899, 3.1416,  4,    false, false, true,  false),
+(13, '채소1',          1.05,  -1.224, 3.1416,  5,    false, false, true,  false),
+(14, '채소_화장실',    1.05,  -1.536, 0,       NULL, false, false, false, false),
+-- 아래쪽 복도
 (15, '화장실2',        0.812, -1.536, 1.5708,  100,  false, false, true,  false),
 (16, '결제구역1',      0.186, -1.544, 0,       150,  false, false, false, true),
 (17, '결제구역2',      0.183, -1.402, 0,       150,  false, false, false, true),
--- 내부 1열 (y=-0.300, 선반에서 5cm)
-(18, '빵1',            0.544, -0.300, 1.5708,  7,    false, false, true,  false),
-(19, '빵2',            0.699, -0.300, 1.5708,  7,    false, false, true,  false),
--- 내부 2열 (y=-0.606, 선반에서 5cm)
-(20, '가공식품1',      0.699, -0.606, -1.5708, 8,    false, false, true,  false),
-(21, '가공식품2',      0.544, -0.606, -1.5708, 8,    false, false, true,  false),
--- 내부 3열 (y=-0.899, 선반에서 5cm)
-(22, '음료1',          0.699, -0.899, 1.5708,  6,    false, false, true,  false),
-(23, '음료2',          0.699, -1.224, -1.5708, 6,    false, false, true,  false),
+-- 내부 1열 (y=-0.300, 선반에서 10cm)
+(18, '빵1',            0.42,  -0.300, -1.5708, 7,    false, false, true,  false),
+(19, '빵2',            0.76,  -0.300, -1.5708, 7,    false, false, true,  false),
+-- 내부 2열 (y=-0.606, 선반에서 13cm)
+(20, '가공식품1',      0.76,  -0.606, 1.5708,  8,    false, false, true,  false),
+(21, '가공식품2',      0.42,  -0.606, 1.5708,  8,    false, false, true,  false),
+-- 내부 3열 (y=-0.899, 선반에서 13cm)
+(22, '음료1',          0.76,  -0.899, -1.5708, 6,    false, false, true,  false),
+(23, '음료2',          0.76,  -1.224, 1.5708,  6,    false, false, true,  false),
 -- 통로 waypoint
-(24, '로비',            0.245, -0.057, 0,       NULL, false, false, false, false),
+(24, '로비',            0.245, -0.12,  0,       NULL, false, false, false, true),
 (25, '1열_입구',        0.245, -0.300, 0,       NULL, false, false, false, false),
 (26, '2열_입구',        0.245, -0.606, 0,       NULL, false, false, false, false),
 (27, '3열_입구',        0.245, -0.899, 0,       NULL, false, false, false, false),
@@ -167,11 +167,11 @@ INSERT INTO fleet_waypoint (idx, name, x, y, theta, zone_id, is_charger, is_park
 (29, '2열_출구',        0.950, -0.606, 0,       NULL, false, false, false, false),
 (30, '3열_출구',        0.950, -0.899, 0,       NULL, false, false, false, false),
 (31, '4열_중간',        0.950, -1.224, 0,       NULL, false, false, false, false),
-(32, '3열_중간',        0.494, -0.899, 0,       NULL, false, false, false, false),
+(32, '3열_중간',        0.42,  -0.899, 0,       NULL, false, false, false, false),
 (33, '4열_입구',        0.494, -1.224, 0,       NULL, false, false, false, false),
 (34, '하단_중간',       0.494, -1.137, 0,       NULL, false, false, false, false),
 (35, '하단_입구',       0.245, -1.137, 0,       NULL, false, false, false, false),
-(36, '하단_복도',       0.05,  -1.137, 0,       NULL, false, false, false, false),
+(36, '하단_복도',       0.12,  -1.137, 0,       NULL, false, false, false, false),
 (37, '결제구역2_입구',  0.494, -1.402, 0,       NULL, false, false, false, false),
 (38, '결제구역1_입구',  0.494, -1.540, 0,       NULL, false, false, false, false)
 ON CONFLICT (idx) DO UPDATE SET

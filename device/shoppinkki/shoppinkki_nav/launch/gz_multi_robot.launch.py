@@ -249,9 +249,13 @@ def generate_launch_description():
         package='ros_gz_bridge',
         executable='parameter_bridge',
         name='bridge_position_adjustment',
-        arguments=['--ros-args', '-p', f'config_file:={position_adjustment_bridge_yaml}'],
+        arguments=[
+            '--ros-args',
+            '-p', f'config_file:={position_adjustment_bridge_yaml}',
+            '--log-level', 'bridge_position_adjustment:=warn',
+        ],
         parameters=[{'use_sim_time': True}],
-        output='screen',
+        output='log',
     )
 
     return LaunchDescription([

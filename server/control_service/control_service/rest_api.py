@@ -78,6 +78,27 @@ def create_app(robot_manager: 'RobotManager',
             return jsonify({'error': 'no parking available'}), 404
         return jsonify(_zone_dict(zone))
 
+    # ── Robot status ────────────────────────────
+
+    @app.get('/robot/<robot_id>/status')
+    def robot_status(robot_id: str):
+        """로봇 현재 상태 조회 (위치, 모드, 배터리 등)."""
+        state = robot_manager.get_state(robot_id)
+        if state is None:
+            return jsonify({'error': 'robot not found'}), 404
+        return jsonify({
+            'robot_id': state.robot_id,
+            'mode': state.mode,
+            'pos_x': state.pos_x,
+            'pos_y': state.pos_y,
+            'yaw': state.yaw,
+            'battery': state.battery,
+            'is_locked_return': state.is_locked_return,
+            'follow_disabled': state.follow_disabled,
+            'dest_x': state.dest_x,
+            'dest_y': state.dest_y,
+        })
+
     # ── Robot command (RMF fleet_adapter 용) ────
 
     @app.post('/robot/<robot_id>/cmd')
@@ -87,6 +108,18 @@ def create_app(robot_manager: 'RobotManager',
         if not payload.get('cmd'):
             return jsonify({'error': 'cmd required'}), 400
         logger.info('[REST] /robot/%s/cmd → %s', robot_id, payload)
+        # navigate_to 목적지 저장
+        cmd = payload.get('cmd')
+        if cmd == 'navigate_to':
+            state = robot_manager.get_state(robot_id)
+            if state:
+                state.dest_x = float(payload.get('x', 0))
+                state.dest_y = float(payload.get('y', 0))
+        elif cmd in ('force_idle', 'return_to_charger'):
+            state = robot_manager.get_state(robot_id)
+            if state:
+                state.dest_x = None
+                state.dest_y = None
         if robot_manager.publish_cmd:
             robot_manager.publish_cmd(robot_id, payload)
         return jsonify({'ok': True})

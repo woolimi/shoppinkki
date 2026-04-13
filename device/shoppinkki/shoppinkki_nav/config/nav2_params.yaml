@@ -102,7 +102,7 @@ controller_server:
       desired_linear_vel: 0.20
       max_linear_accel: 0.5
       max_linear_decel: 0.5
-      max_angular_vel: 1.5
+      max_angular_vel: 2.5
       lookahead_dist: 0.2
       min_lookahead_dist: 0.1
       max_lookahead_dist: 0.4
@@ -113,8 +113,8 @@ controller_server:
       use_interpolation: true
       use_rotate_to_heading: true
       rotate_to_heading_min_angle: 0.35
-      rotate_to_heading_angular_vel: 1.0
-      max_angular_accel: 1.0
+      rotate_to_heading_angular_vel: 2.0
+      max_angular_accel: 2.0
       allow_reversing: false
       use_rotate_to_heading_threshold: 0.25
       final_rotation_alpha: 1.0
@@ -141,13 +141,13 @@ local_costmap:
       width: 1
       height: 1
       resolution: 0.01
-      footprint: '[[0.07, 0.055], [0.07, -0.055], [-0.08, -0.055], [-0.08, 0.055]]'
+      footprint: '[[0.08, 0.055], [0.08, -0.055], [-0.07, -0.055], [-0.07, 0.055]]'
       footprint_padding: 0.0
       plugins: ["voxel_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 5.0
-        inflation_radius: 0.0
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.06
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: True
@@ -179,7 +179,7 @@ global_costmap:
       publish_frequency: 2.0
       global_frame: map
       robot_base_frame: __NS__/base_footprint
-      footprint: '[[0.07, 0.055], [0.07, -0.055], [-0.08, -0.055], [-0.08, 0.055]]'
+      footprint: '[[0.08, 0.055], [0.08, -0.055], [-0.07, -0.055], [-0.07, 0.055]]'
       resolution: 0.01
       track_unknown_space: true
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
@@ -203,8 +203,8 @@ global_costmap:
         map_topic: /__NS__/map
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 5.0
-        inflation_radius: 0.0
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.06
       always_send_full_costmap: True
 
 map_saver:
@@ -261,8 +261,8 @@ behavior_server:
     robot_base_frame: __NS__/base_footprint
     transform_tolerance: 0.1
     simulate_ahead_time: 2.0
-    max_rotational_vel: 1.0
-    min_rotational_vel: 0.3
+    max_rotational_vel: 2.0
+    min_rotational_vel: 0.5
     rotational_acc_lim: 3.2
     enable_stamped_cmd_vel: false
 
@@ -284,10 +284,10 @@ velocity_smoother:
     smoothing_frequency: 15.0
     scale_velocities: True
     feedback: "OPEN_LOOP"
-    max_velocity: [0.25, 0.0, 1.5]
-    min_velocity: [-0.25, 0.0, -1.5]
-    max_accel: [1.2, 0.0, 1.5]
-    max_decel: [-1.2, 0.0, -1.5]
+    max_velocity: [0.25, 0.0, 2.5]
+    min_velocity: [-0.25, 0.0, -2.5]
+    max_accel: [1.2, 0.0, 2.5]
+    max_decel: [-1.2, 0.0, -2.5]
     odom_topic: /__NS__/odom
     odom_duration: 0.1
     deadband_velocity: [0.0, 0.0, 0.0]
@@ -317,7 +317,7 @@ collision_monitor:
       points: "[[0.18, 0.10], [0.18, -0.10], [-0.02, -0.10], [-0.02, 0.10]]"
       action_type: "slowdown"
       max_points: 3
-      slowdown_ratio: 0.5
+      slowdown_ratio: 0.7
       visualize: False
       polygon_pub_topic: "polygon_slow"
     observation_sources: ["scan"]

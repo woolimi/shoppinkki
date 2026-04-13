@@ -47,6 +47,8 @@ class RobotState:
     last_seen: datetime = field(default_factory=datetime.utcnow)
     active_user_id: Optional[str] = None
     bbox: Optional[Dict] = None          # latest detection bbox from AI server
+    dest_x: Optional[float] = None       # navigate_to 목적지 x
+    dest_y: Optional[float] = None       # navigate_to 목적지 y
 
 
 # ──────────────────────────────────────────────

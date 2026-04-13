@@ -16,14 +16,14 @@ RVIZ_PID=""
 
 # ── 구역 목록 (번호, x, y, theta, 이름, RMF waypoint) ────────
 ZONES=(
-  "1   0.619  -0.057  0.0     가전제품    가전제품1"
-  "2   0.950  -0.057  0.0     과자        과자1"
-  "3   1.101  -0.300  3.1416  해산물      해산물2"
-  "4   1.101  -0.752  3.1416  육류        육류1"
-  "5   1.101  -1.224  3.1416  채소        채소1"
-  "6   0.699  -0.899  0.0     음료        음료1"
-  "7   0.622  -0.300  0.0     베이커리    빵1"
-  "8   0.622  -0.606  0.0     음식        가공식품2"
+  "1   0.619  -0.12   0.0     가전제품    가전제품1"
+  "2   0.950  -0.12   0.0     과자        과자1"
+  "3   1.05   -0.300  3.1416  해산물      해산물2"
+  "4   1.05   -0.752  3.1416  육류        육류1"
+  "5   1.05   -1.224  3.1416  채소        채소1"
+  "6   0.76   -0.899  0.0     음료        음료1"
+  "7   0.42   -0.300  0.0     베이커리    빵1"
+  "8   0.42   -0.606  0.0     음식        가공식품2"
 )
 
 # 로봇별 충전소 waypoint
@@ -270,6 +270,10 @@ main() {
     echo "    c) cost_scaling_factor 변경"
     echo "    p) 기타 파라미터 직접 변경"
     echo
+    echo -e "  ${Y}[ 상태 제어 ]${NC}"
+    echo "    i) IDLE 모드로 전환 (다음 명령 대기)"
+    echo "    a) 전체 로봇 IDLE 전환 (54+18)"
+    echo
     echo -e "  ${Y}[ 모니터 ]${NC}"
     echo "    s) 로봇 상태 확인"
     echo "    l) 최근 로그 보기"
@@ -293,6 +297,12 @@ main() {
       f) do_set_footprint_padding ;;
       c) do_set_cost_scaling ;;
       p) do_set_custom_param ;;
+      i) echo -e "${G}>> 로봇 ${ROBOT_ID} IDLE 전환${NC}"; send_cmd '{"cmd":"force_idle"}' ;;
+      a)
+        echo -e "${G}>> 전체 로봇 IDLE 전환${NC}"
+        curl -s -X POST "${API}/robot/54/cmd" -H "Content-Type: application/json" -d '{"cmd":"force_idle"}'; echo
+        curl -s -X POST "${API}/robot/18/cmd" -H "Content-Type: application/json" -d '{"cmd":"force_idle"}'; echo
+        ;;
       s) show_status ;;
       l) show_log ;;
       v) do_rviz ;;

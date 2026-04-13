@@ -55,6 +55,25 @@ def _parse_waypoint_coords(nav_graph_path: str) -> dict[str, tuple[float, float]
         return {}
 
 
+def _parse_waypoint_orientations(nav_graph_path: str) -> dict[int, float]:
+    """nav_graph YAML에서 waypoint idx → orientation 사전을 반환."""
+    try:
+        import yaml
+        with open(nav_graph_path, 'r') as f:
+            data = yaml.safe_load(f)
+        orientations: dict[int, float] = {}
+        for level in data.get('levels', {}).values():
+            for idx, v in enumerate(level.get('vertices', [])):
+                if len(v) >= 3 and isinstance(v[2], dict):
+                    orient = v[2].get('orientation')
+                    if orient is not None:
+                        orientations[idx] = float(orient)
+        return orientations
+    except Exception as e:
+        logger.warning('nav_graph orientation 파싱 실패: %s', e)
+        return {}
+
+
 # ── 단일 로봇 어댑터 ────────────────────────────────────────────────────────────
 
 class RobotAdapter:
@@ -63,9 +82,12 @@ class RobotAdapter:
     ARRIVE_DIST_M = 0.15
     ARRIVE_YAW_RAD = 0.30
 
-    def __init__(self, robot_id: str, ctrl_host: str, ctrl_port: int) -> None:
+    def __init__(self, robot_id: str, ctrl_host: str, ctrl_port: int,
+                 waypoint_orientations: dict[int, float] = None) -> None:
         self.robot_id = robot_id
         self._rest_base = f'http://{ctrl_host}:{ctrl_port}'
+        self._wp_orientations = waypoint_orientations or {}
+        self._all_robots: dict[str, 'RobotAdapter'] = {}  # set after init
 
         self._x = 0.0
         self._y = 0.0
@@ -151,6 +173,13 @@ class RobotAdapter:
             x, y = dest.xy
             yaw = dest.yaw
             zone_idx = dest.graph_index
+            # nav_graph에 orientation이 있으면 항상 적용
+            if zone_idx is not None:
+                wp_yaw = self._wp_orientations.get(int(zone_idx))
+                if wp_yaw is not None:
+                    yaw = wp_yaw
+                    logger.info('[%s] orientation: idx=%s → yaw=%.4f',
+                                self.robot_id, zone_idx, yaw)
 
             self._refresh_position()
 
@@ -399,11 +428,15 @@ def main(args=None) -> None:
         pkg = os.path.join(os.path.dirname(__file__), '..', '..')
     nav_graph_path = os.path.join(pkg, 'maps', 'shop_nav_graph.yaml')
     waypoint_coords = _parse_waypoint_coords(nav_graph_path)
+    waypoint_orientations = _parse_waypoint_orientations(nav_graph_path)
 
     robots: Dict[str, RobotAdapter] = {}
     for robot_name, robot_cfg in fleet_cfg.get('robots', {}).items():
         rid = robot_name.replace('pinky_', '')
-        robots[rid] = RobotAdapter(rid, ctrl_host, ctrl_port)
+        robots[rid] = RobotAdapter(rid, ctrl_host, ctrl_port, waypoint_orientations)
+    # 각 로봇이 다른 로봇 위치를 조회할 수 있도록 참조 설정
+    for robot in robots.values():
+        robot._all_robots = robots
 
     bridge_node = StatusBridgeNode(robots)
 

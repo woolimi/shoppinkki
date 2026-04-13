@@ -132,7 +132,7 @@ ros2 launch pinky_navigation nav2_view.launch.xml
 ```bash
 bash scripts/run_server.sh   # 터미널 A — control_service + AI Docker
 bash scripts/run_ui.sh       # 터미널 B — admin_ui + customer_web
-bash scripts/run_sim.sh      # 터미널 C — Gazebo + Nav2 x2 + shoppinkki_core x2
+bash scripts/run_sim.sh      # 터미널 C — Gazebo + Nav2 x2 + shoppinkki_core x2 + RMF fleet adapter
 ```
 
 Gazebo 로딩 완료(~60초) 후:
