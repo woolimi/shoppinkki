@@ -274,11 +274,10 @@ class ShoppinkiMainNode(Node):
             )
             self._boundary_monitor.start()
             self.get_logger().info(
-                'BoundaryMonitor: %d boundary row(s), checkout active',
-                len(_bounds),
+                f'BoundaryMonitor: {len(_bounds)} boundary row(s), checkout active'
             )
         except Exception as e:
-            self.get_logger().warning('BoundaryMonitor unavailable: %s', e)
+            self.get_logger().warning(f'BoundaryMonitor unavailable: {e}')
 
         # ── Internal state ────────────────────
         self._pos_x: float = 0.0
