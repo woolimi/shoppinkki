@@ -5,12 +5,12 @@
 # 레인:   [from_idx, to_idx, {is_bidirectional, ...}]
 #
 # 정렬 기준 (그리드 정렬, 벽/선반에서 5cm 이격):
-#   왼쪽 복도   x = 0.05  (벽 x=0.0에서 +5cm, 충전소 P1/P2는 x=0.0 유지)
-#   위쪽 복도   y = -0.057 (벽 y~0에서 -5.7cm)
+#   왼쪽 복도   x = 0.0   (벽 위치)
+#   위쪽 복도   y = -0.007 (벽 위치)
 #   1열 수평    y = -0.300
 #   2열 수평    y = -0.606
 #   3열 수평    y = -0.899
-#   오른쪽 복도 x = 1.101  (벽 x=1.151에서 -5cm)
+#   오른쪽 복도 x = 1.151  (벽 위치)
 #
 # 인덱스:
 #  0=입구1    1=입구2    2=P1       3=P2       4=출구2    5=출구1
@@ -26,27 +26,27 @@ building_name: "ShopPinkki Miniature Mart"
 levels:
   L1:
     vertices:
-      # 왼쪽 복도 (x=0.05, 벽에서 5cm)
-      - [0.05, -0.057, {name: "입구1",      is_holding_point: true}]                              # 0
-      - [0.05, -0.300, {name: "입구2",      is_holding_point: true}]                              # 1
+      # 왼쪽 복도 (x=0.0)
+      - [0.0,  -0.007, {name: "입구1",      is_holding_point: true}]                              # 0
+      - [0.0,  -0.300, {name: "입구2",      is_holding_point: true}]                              # 1
       - [0.0,  -0.606, {name: "P1",         is_parking_spot: true, is_charger: true}]             # 2
       - [0.0,  -0.899, {name: "P2",         is_parking_spot: true, is_charger: true}]             # 3
-      - [0.05, -1.402, {name: "출구2",      is_holding_point: true}]                              # 4
-      - [0.05, -1.547, {name: "출구1",      is_holding_point: true}]                              # 5
-      # 위쪽 복도 (y=-0.057, 벽에서 5cm)
-      - [ 0.489, -0.057, {name: "가전제품1",   pickup_zone: true, orientation: 0.0}]              # 6
-      - [ 0.749, -0.057, {name: "가전제품2",   pickup_zone: true, orientation: 0.0}]              # 7
-      - [ 0.950, -0.057, {name: "과자1",       pickup_zone: true, orientation: 0.0}]              # 8
-      - [ 1.101, -0.057, {name: "과자_해산물"}]                                                   # 9
-      # 오른쪽 복도 (x=1.101, 벽에서 5cm)
-      - [ 1.101, -0.300, {name: "해산물2",     pickup_zone: true, orientation: 3.1416}]            # 10
-      - [ 1.101, -0.606, {name: "육류1",       pickup_zone: true, orientation: 3.1416}]            # 11
-      - [ 1.101, -0.899, {name: "육류2",       pickup_zone: true, orientation: 3.1416}]            # 12
-      - [ 1.101, -1.224, {name: "채소1",       pickup_zone: true, orientation: 3.1416}]            # 13
-      - [ 1.101, -1.536, {name: "채소_화장실"}]                                                   # 14
-      # 아래쪽 복도 (벽에서 5cm)
-      - [ 0.812, -1.536, {name: "화장실2",     pickup_zone: true}]                                # 15
-      - [ 0.186, -1.544, {name: "결제구역1",   is_holding_point: true}]                           # 16
+      - [0.0,  -1.402, {name: "출구2",      is_holding_point: true}]                              # 4
+      - [0.0,  -1.617, {name: "출구1",      is_holding_point: true}]                              # 5
+      # 위쪽 복도 (y=-0.007)
+      - [ 0.489, -0.007, {name: "가전제품1",   pickup_zone: true, orientation: 0.0}]              # 6
+      - [ 0.749, -0.007, {name: "가전제품2",   pickup_zone: true, orientation: 0.0}]              # 7
+      - [ 0.950, -0.007, {name: "과자1",       pickup_zone: true, orientation: 0.0}]              # 8
+      - [ 1.151, -0.007, {name: "과자_해산물"}]                                                   # 9
+      # 오른쪽 복도 (x=1.151)
+      - [ 1.151, -0.300, {name: "해산물2",     pickup_zone: true, orientation: 3.1416}]            # 10
+      - [ 1.151, -0.606, {name: "육류1",       pickup_zone: true, orientation: 3.1416}]            # 11
+      - [ 1.151, -0.899, {name: "육류2",       pickup_zone: true, orientation: 3.1416}]            # 12
+      - [ 1.151, -1.224, {name: "채소1",       pickup_zone: true, orientation: 3.1416}]            # 13
+      - [ 1.151, -1.606, {name: "채소_화장실"}]                                                   # 14
+      # 아래쪽 복도 (y=-1.6xx)
+      - [ 0.812, -1.606, {name: "화장실2",     pickup_zone: true}]                                # 15
+      - [ 0.186, -1.614, {name: "결제구역1",   is_holding_point: true}]                           # 16
       - [ 0.183, -1.402, {name: "결제구역2",   is_holding_point: true}]                           # 17
       # 내부 1열 (y=-0.300)
       - [ 0.544, -0.300, {name: "빵1",         pickup_zone: true, orientation: 0.0}]              # 18
@@ -58,7 +58,7 @@ levels:
       - [ 0.699, -0.899, {name: "음료1",       pickup_zone: true, orientation: 0.0}]              # 22
       - [ 0.699, -1.224, {name: "음료2",       pickup_zone: true, orientation: 0.0}]              # 23
       # 통로 waypoint
-      - [ 0.245, -0.057, {name: "로비",       is_holding_point: true}]                            # 24
+      - [ 0.245, -0.007, {name: "로비",       is_holding_point: true}]                             # 24
       - [ 0.245, -0.300, {name: "1열_입구",   is_holding_point: true}]                            # 25
       - [ 0.245, -0.606, {name: "2열_입구",   is_holding_point: true}]                            # 26
       - [ 0.245, -0.899, {name: "3열_입구",   is_holding_point: true}]                            # 27
@@ -70,9 +70,9 @@ levels:
       - [ 0.494, -1.224, {name: "4열_입구"}]                                                      # 33
       - [ 0.494, -1.137, {name: "하단_중간"}]                                                     # 34
       - [ 0.245, -1.137, {name: "하단_입구",  is_holding_point: true}]                            # 35
-      - [ 0.05,  -1.137, {name: "하단_복도",  is_holding_point: true}]                            # 36
+      - [ 0.0,   -1.137, {name: "하단_복도",  is_holding_point: true}]                             # 36
       - [ 0.494, -1.402, {name: "결제구역2_입구"}]                                                # 37
-      - [ 0.494, -1.540, {name: "결제구역1_입구"}]                                                # 38
+      - [ 0.494, -1.606, {name: "결제구역1_입구"}]                                                # 38
 
     lanes:
       # ── 외곽 루프 — 왼쪽 복도 ────────────────────────────────────────────────
