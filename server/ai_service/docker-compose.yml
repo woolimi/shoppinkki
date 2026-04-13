@@ -18,23 +18,7 @@ version: '3.9'
 #   PG_DATABASE (기본 shoppinkki)
 
 services:
-  yolo:
-    build:
-      context: ./yolo
-      dockerfile: Dockerfile
-    container_name: shoppinkki_yolo
-    ports:
-      - "5005:5005"
-    volumes:
-      - ./yolo/models:/app/models:ro
-    environment:
-      - MODEL_PATH=/app/models/best.pt
-      - FALLBACK_MODEL=yolov8n.pt
-      - YOLO_CONFIDENCE=0.25
-      - YOLO_CLASS_FILTER=           # 빈 문자열 → 전체 클래스 허용 (custom model은 1클래스)
-      - HOST=0.0.0.0
-      - PORT=5005
-    restart: unless-stopped
+  # YOLO is now running locally on Pinky Pro (NCNN)
 
   llm:
     build:

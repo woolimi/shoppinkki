@@ -78,7 +78,7 @@ class PinkyEmotion(Node):
                 return
 
             frame_to_show = self.gif_frames[self.current_frame_index]
-            self.lcd.img_show(frame_to_show)
+            # self.lcd.img_show(frame_to_show)
 
             self.current_frame_index = (self.current_frame_index + self.play_frame_skip) % len(self.gif_frames) # <--- 4. 이름 변경
 

@@ -32,8 +32,11 @@ REST_PORT = int(os.environ.get('REST_PORT', '8081'))
 
 def main() -> None:
     # ── 1. DB pool ────────────────────────────
-    db.init_pool()
-    db.reset_sessions_on_startup()
+    try:
+        db.init_pool()
+        db.reset_sessions_on_startup()
+    except Exception as e:
+        logger.error('Startup DB init failed: %s', e)
 
     # ── 2. RobotManager ───────────────────────
     rm = RobotManager()

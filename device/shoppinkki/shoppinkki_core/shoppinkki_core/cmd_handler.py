@@ -53,6 +53,9 @@ class CmdHandler:
     on_registration_confirm:
         Called with (bbox: dict) when registration_confirm cmd is received in IDLE.
         사용자가 앱에서 인형을 확인했을 때 호출.
+    on_retake_registration:
+        Called when retake_registration cmd is received in IDLE/SEARCHING.
+        확인 대기 중인 후보를 해제하고 새 감지를 시작한다.
     """
 
     def __init__(
@@ -64,6 +67,7 @@ class CmdHandler:
         on_start_session: Optional[Callable[[str], None]] = None,
         has_unpaid_items: Optional[Callable[[], bool]] = None,
         on_enter_registration: Optional[Callable[[], None]] = None,
+        on_retake_registration: Optional[Callable[[], None]] = None,
         on_enter_simulation: Optional[Callable[[], None]] = None,
         on_registration_confirm: Optional[Callable[[dict], None]] = None,
         on_navigate_cancel: Optional[Callable[[], None]] = None,
@@ -75,6 +79,7 @@ class CmdHandler:
         self._on_start_session = on_start_session
         self._has_unpaid_items = has_unpaid_items
         self._on_enter_registration = on_enter_registration
+        self._on_retake_registration = on_retake_registration
         self._on_enter_simulation = on_enter_simulation
         self._on_registration_confirm = on_registration_confirm
         self._on_navigate_cancel = on_navigate_cancel
@@ -223,8 +228,8 @@ class CmdHandler:
 
         payload: {"cmd": "registration_confirm", "bbox": {...}}
         """
-        if self.sm.state != 'IDLE':
-            logger.warning('registration_confirm ignored in state=%s (IDLE 상태에서만 가능)',
+        if self.sm.state not in ('IDLE', 'SEARCHING'):
+            logger.warning('registration_confirm ignored in state=%s (IDLE/SEARCHING 상태에서만 가능)',
                            self.sm.state)
             return
         bbox = payload.get('bbox', {})
@@ -238,13 +243,26 @@ class CmdHandler:
         /register 페이지 접속 시 호출 — _registration_active 플래그를 세워
         카메라 루프가 LCD에 카메라 피드를 표시하도록 한다.
         """
-        if self.sm.state != 'IDLE':
-            logger.warning('enter_registration ignored in state=%s (IDLE 상태에서만 가능)',
+        if self.sm.state not in ('IDLE', 'SEARCHING'):
+            logger.warning('enter_registration ignored in state=%s (IDLE/SEARCHING 상태에서만 가능)',
                            self.sm.state)
             return
-        logger.info('enter_registration: LCD 카메라 피드 전환')
+        # Set registration flag first so any immediate state redraw can be skipped.
         if self._on_enter_registration:
             self._on_enter_registration()
+        # If we were proactively searching, go back to IDLE after registration flag is active.
+        if self.sm.state == 'SEARCHING':
+            self.sm.enter_idle()
+        logger.info('enter_registration: LCD 카메라 피드 전환')
+
+    def _handle_retake_registration(self, payload: dict) -> None:
+        """등록 재촬영 요청 (IDLE/SEARCHING에서 유효)."""
+        if self.sm.state not in ('IDLE', 'SEARCHING'):
+            logger.warning('retake_registration ignored in state=%s', self.sm.state)
+            return
+        if self._on_retake_registration:
+            self._on_retake_registration()
+        logger.info('retake_registration: 새 후보 감지 재개')
 
     def _handle_enter_simulation(self, payload: dict) -> None:
         """시뮬레이션 모드: IDLE → TRACKING + 추종 비활성화.
@@ -282,6 +300,7 @@ class CmdHandler:
         'staff_resolved':        _handle_staff_resolved,
         'admin_goto':            _handle_admin_goto,
         'enter_registration':    _handle_enter_registration,
+        'retake_registration':   _handle_retake_registration,
         'enter_simulation':      _handle_enter_simulation,
         'registration_confirm':  _handle_registration_confirm,
         'force_idle':            _handle_force_idle,

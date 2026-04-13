@@ -58,15 +58,19 @@ class ShoppinkiSM:
         {'trigger': 'charging_completed',
          'source': 'CHARGING', 'dest': 'IDLE'},
 
+        # SEARCHING → IDLE (Search failed/timeout)
+        {'trigger': 'enter_idle',
+         'source': 'SEARCHING', 'dest': 'IDLE'},
+
         # ── Tracking ──────────────────────────────────
         # IDLE / SEARCHING / TRACKING_CHECKOUT → TRACKING
         {'trigger': 'enter_tracking',
          'source': ['IDLE', 'SEARCHING', 'TRACKING_CHECKOUT'],
          'dest': 'TRACKING'},
 
-        # TRACKING / TRACKING_CHECKOUT → SEARCHING
+        # TRACKING / TRACKING_CHECKOUT / IDLE → SEARCHING
         {'trigger': 'enter_searching',
-         'source': ['TRACKING', 'TRACKING_CHECKOUT'],
+         'source': ['TRACKING', 'TRACKING_CHECKOUT', 'IDLE'],
          'dest': 'SEARCHING'},
 
         # ── Guiding ───────────────────────────────────

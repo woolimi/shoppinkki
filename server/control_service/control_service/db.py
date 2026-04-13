@@ -203,10 +203,46 @@ def get_active_session_by_user(user_id: str) -> Optional[Dict]:
 
 def end_session(session_id: int) -> None:
     with _cursor() as cur:
+        # Update session
         cur.execute(
             'UPDATE SESSION SET is_active = FALSE WHERE session_id = %s',
             (session_id,),
         )
+        # Clear active_user_id in ROBOT
+        cur.execute(
+            'UPDATE robot SET active_user_id = NULL WHERE robot_id = ('
+            '  SELECT robot_id FROM SESSION WHERE session_id = %s'
+            ')',
+            (session_id,),
+        )
+
+
+def deactivate_expired_sessions() -> None:
+    """Deactivate sessions that have passed their expires_at time."""
+    with _cursor() as cur:
+        # Get session_ids of sessions that are about to be deactivated
+        cur.execute(
+            'SELECT session_id, robot_id FROM SESSION '
+            'WHERE is_active = TRUE AND expires_at < NOW()'
+        )
+        expired = cur.fetchall()
+        if not expired:
+            return
+
+        expired_ids = [s['session_id'] for s in expired]
+        expired_robots = [s['robot_id'] for s in expired]
+
+        # Deactivate sessions
+        cur.execute(
+            'UPDATE SESSION SET is_active = FALSE WHERE session_id = ANY(%s)',
+            (expired_ids,),
+        )
+        # Clear robots
+        cur.execute(
+            'UPDATE robot SET active_user_id = NULL WHERE robot_id = ANY(%s)',
+            (expired_robots,),
+        )
+        logger.info('Deactivated %d expired sessions.', len(expired_ids))
 
 
 # ──────────────────────────────────────────────

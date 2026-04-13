@@ -343,7 +343,8 @@ class RobotManager:
             self._relay_to_pi(robot_id, payload)
         elif cmd in ('mode', 'resume_tracking',
                      'start_session', 'enter_simulation',
-                     'return', 'registration_confirm', 'enter_registration'):
+                     'return', 'registration_confirm', 'enter_registration',
+                     'retake_registration'):
             if cmd == 'return':
                 # 쇼핑 종료: customer_web의 return 이벤트를 Pi가 이해하는 mode=RETURNING으로 변환해 전달한다.
                 # (Pi는 cmd='return'을 처리하지 않음)

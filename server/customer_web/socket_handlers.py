@@ -163,6 +163,14 @@ def register_handlers(socketio, control_clients: dict, llm_cfg: dict):
                 "robot_id": robot_id,
                 "bbox": bbox,
             })
+
+    @socketio.on("retake_registration")
+    def on_retake_registration(data=None):
+        """[다시 찍기] 클릭 → 새 후보 감지 재개."""
+        robot_id, cc = _get_client()
+        if cc:
+            logger.info("retake_registration 요청 (robot_id=%s)", robot_id)
+            cc.send({"cmd": "retake_registration", "robot_id": robot_id})
  
     # ── 시뮬레이션 모드 ───────────────────────────────────────────
 

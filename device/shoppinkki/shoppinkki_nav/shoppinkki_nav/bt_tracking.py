@@ -33,8 +33,8 @@ try:
     )
 except ImportError:
     KP_ANGLE = 0.002
-    KP_DIST = 0.003
-    TARGET_SIZE = 200.0
+    KP_DIST = 0.005
+    TARGET_SIZE = 250.0
     IMAGE_WIDTH = 640
     LINEAR_X_MAX = 0.22
     ANGULAR_Z_MAX = 1.0
@@ -109,7 +109,19 @@ class ComputeVelocity(py_trees.behaviour.Behaviour):
         self._ctx.angular_z = -KP_ANGLE * error_cx
         self._ctx.angular_z = max(-ANGULAR_Z_MAX, min(ANGULAR_Z_MAX, self._ctx.angular_z))
 
+        # ── [NEW] LKP (Last Known Position) 메모리 저장 ──
+        # doll_detector 가 이미 'last_known_direction' 정보를 제공할 수도 있으나,
+        # P-Control 레벨에서 실제 틀어진 방향을 저장하는 것이 더 정확함.
+        try:
+            bb = py_trees.blackboard.Blackboard()
+            # angular_z가 양수(왼쪽 회전 중)면 1.0, 음수(오른쪽 회전 중)면 -1.0
+            if abs(self._ctx.angular_z) > 0.01:
+                bb.set("last_known_direction", 1.0 if self._ctx.angular_z > 0 else -1.0)
+        except Exception:
+            pass
+
         return py_trees.common.Status.SUCCESS
+
 
 
 class ObstacleAvoidance(py_trees.behaviour.Behaviour):

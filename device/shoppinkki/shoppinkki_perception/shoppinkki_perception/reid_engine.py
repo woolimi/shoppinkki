@@ -1,12 +1,9 @@
 """CNN ReID feature extractor for owner-doll identification.
 
-Ported from owner_detection/reid_engine.py (joey_detection branch, commit 625025ab).
-
 Architecture:
-    - Primary:  MobileNetV3-Small (ImageNet pre-trained), classifier head removed
-                → 1024-dim L2-normalised feature vector
-    - Fallback: 6-float colour statistics (mean+std per BGR channel) when torch
-                is not available (e.g. Raspberry Pi without GPU drivers installed)
+    - Primary: lightweight OSNet via torchreid (osnet_x0_25)
+    - Secondary: MobileNetV3-Small embedding path (torchvision)
+    - Fallback: 6-float colour statistics (mean+std per BGR channel)
 
 Usage::
 
@@ -31,12 +28,16 @@ try:
     import torch.nn as nn
     import torchvision.models as models
     import torchvision.transforms as T
-    # Force disable local PyTorch models on Pinky to save RAM/CPU 
-    # since AI processing is moved to the laptop.
-    _TORCH_AVAILABLE = False
+    _TORCH_AVAILABLE = True
 except ImportError:
     _TORCH_AVAILABLE = False
     logger.warning('ReIDEngine: torch not available — falling back to colour stats')
+
+try:
+    from torchreid.utils import FeatureExtractor as TorchreidFeatureExtractor
+    _TORCHREID_AVAILABLE = True
+except ImportError:
+    _TORCHREID_AVAILABLE = False
 
 
 class ReIDEngine:
@@ -51,21 +52,44 @@ class ReIDEngine:
 
     def __init__(self, device: str | None = None) -> None:
         self._use_cnn = _TORCH_AVAILABLE
-        self._feat_dim = 1024 if _TORCH_AVAILABLE else 6
+        self._use_osnet = False
+        self._device = None
+        self._model = None
+        self._transform = None
+        self._osnet_extractor = None
+        self._feat_dim = 6
 
-        if self._use_cnn:
-            self._device = torch.device(
-                device if device else ('cuda' if torch.cuda.is_available() else 'cpu')
-            )
-            # MobileNetV3-Small: lightweight, Pi 5 compatible
+        if not self._use_cnn:
+            logger.info('ReIDEngine: colour-stats fallback mode')
+            return
+
+        self._device = torch.device(
+            device if device else ('cuda' if torch.cuda.is_available() else 'cpu')
+        )
+
+        # 1) Preferred: lightweight OSNet
+        if _TORCHREID_AVAILABLE:
+            try:
+                self._osnet_extractor = TorchreidFeatureExtractor(
+                    model_name='osnet_x0_25',
+                    model_path='',
+                    device=str(self._device),
+                )
+                self._use_osnet = True
+                self._feat_dim = 512
+                logger.info('ReIDEngine: OSNet x0.25 loaded on %s', self._device)
+                return
+            except Exception as e:
+                logger.warning('ReIDEngine: OSNet init failed, fallback to MobileNet: %s', e)
+
+        # 2) Secondary: MobileNetV3-Small
+        try:
             backbone = models.mobilenet_v3_small(
                 weights=models.MobileNet_V3_Small_Weights.IMAGENET1K_V1
             )
-            # Remove the classifier → output of adaptive_avg_pool (1024-dim)
             self._model = nn.Sequential(*list(backbone.children())[:-1])
             self._model.to(self._device)
             self._model.eval()
-
             self._transform = T.Compose([
                 T.ToPILImage(),
                 T.Resize((224, 224)),
@@ -73,12 +97,12 @@ class ReIDEngine:
                 T.Normalize(mean=[0.485, 0.456, 0.406],
                             std=[0.229, 0.224, 0.225]),
             ])
+            self._feat_dim = 1024
             logger.info('ReIDEngine: MobileNetV3-Small loaded on %s', self._device)
-        else:
-            self._device = None
-            self._model = None
-            self._transform = None
-            logger.info('ReIDEngine: colour-stats fallback mode')
+        except Exception as e:
+            self._use_cnn = False
+            self._feat_dim = 6
+            logger.warning('ReIDEngine: CNN init failed, using colour stats: %s', e)
 
     @property
     def feat_dim(self) -> int:
@@ -119,6 +143,15 @@ class ReIDEngine:
     def _cnn_features(self, roi_bgr) -> np.ndarray:
         try:
             import cv2
+            if self._use_osnet and self._osnet_extractor is not None:
+                rgb = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2RGB)
+                feat = self._osnet_extractor([rgb])
+                feat = np.asarray(feat).reshape(-1).astype(np.float32)
+                norm = np.linalg.norm(feat)
+                if norm > 1e-8:
+                    feat = feat / norm
+                return feat
+
             rgb = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2RGB)
             tensor = self._transform(rgb).unsqueeze(0).to(self._device)
             with torch.no_grad():

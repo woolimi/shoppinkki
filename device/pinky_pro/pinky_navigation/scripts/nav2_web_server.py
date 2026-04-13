@@ -61,7 +61,7 @@ class Nav2WebBridge(Node):
     def __init__(self):
         super().__init__("nav2_web_bridge_tf")
         
-        self.declare_parameter("ip", "192.168.4.1")
+        self.declare_parameter("ip", "192.168.102.54")
         self.declare_parameter("port", 8080)
 
         # ROS 데이터

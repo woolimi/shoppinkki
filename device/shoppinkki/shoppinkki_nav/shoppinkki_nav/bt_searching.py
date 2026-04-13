@@ -25,12 +25,12 @@ try:
     from shoppinkki_core.config import ANGULAR_Z_MAX, MIN_DIST, SEARCH_TIMEOUT
 except ImportError:
     ANGULAR_Z_MAX = 1.0
-    MIN_DIST = 0.25
+    MIN_DIST = 0.20 # Relaxed from 0.25 for tighter spaces
     SEARCH_TIMEOUT = 30.0
 
 logger = logging.getLogger(__name__)
 
-ANGULAR_Z_SEARCH = 0.5  # rad/s rotation speed during search
+ANGULAR_Z_SEARCH = 0.35  # Rotate slowly to reacquire missing owner
 
 
 # ── Shared state ─────────────────────────────────────────────
@@ -44,6 +44,8 @@ class _SearchCtx:
         self.get_scan = get_scan
         self.direction: float = 1.0   # +1=CCW, -1=CW
         self.start_time: float = 0.0
+        self.blocked_streak: int = 0
+        self.last_switch_time: float = 0.0
 
 
 # ── Leaf Behaviours ──────────────────────────────────────────
@@ -81,6 +83,17 @@ class CheckTimeout(py_trees.behaviour.Behaviour):
     def initialise(self) -> None:
         if self._ctx.start_time == 0.0:
             self._ctx.start_time = time.monotonic()
+            
+            # ── [NEW] LKP(Last Known Position) 활용 ──
+            # Tracking 중 저장했던 마지막 회전 방향을 1회만 로드
+            try:
+                bb = py_trees.blackboard.Blackboard()
+                lkp_dir = bb.get("last_known_direction")
+                if lkp_dir is not None:
+                    self._ctx.direction = float(lkp_dir)
+                    logger.info('CheckTimeout: LKP 방향 1회 로드 (direction=%f)', self._ctx.direction)
+            except Exception as e:
+                logger.debug('CheckTimeout: LKP 로드 실패: %s', e)
 
     def update(self) -> py_trees.common.Status:
         elapsed = time.monotonic() - self._ctx.start_time
@@ -108,14 +121,27 @@ class CheckDirection(py_trees.behaviour.Behaviour):
         if self._ctx.get_scan is None:
             return py_trees.common.Status.SUCCESS
 
-        if self._is_blocked(self._ctx.direction):
+        blocked = self._is_blocked(self._ctx.direction)
+        if blocked:
+            self._ctx.blocked_streak += 1
+        else:
+            self._ctx.blocked_streak = 0
+
+        # Keep rotating in the lost direction unless that side is stably blocked.
+        if self._ctx.blocked_streak >= 3:
             if self._is_blocked(-self._ctx.direction):
                 logger.info('CheckDirection: both directions blocked → FAILURE')
                 self._ctx.publisher.publish_cmd_vel(0.0, 0.0)
                 return py_trees.common.Status.FAILURE
-            self._ctx.direction = -self._ctx.direction
-            logger.info('CheckDirection: switched to %s',
-                        'CCW' if self._ctx.direction > 0 else 'CW')
+
+            now = time.monotonic()
+            # Debounce direction flips to avoid shaking around one angle.
+            if (now - self._ctx.last_switch_time) >= 1.2:
+                self._ctx.direction = -self._ctx.direction
+                self._ctx.last_switch_time = now
+                self._ctx.blocked_streak = 0
+                logger.info('CheckDirection: switched to %s (after stable block)',
+                            'CCW' if self._ctx.direction > 0 else 'CW')
 
         return py_trees.common.Status.SUCCESS
 
@@ -134,7 +160,10 @@ class CheckDirection(py_trees.behaviour.Behaviour):
                 end_idx = int(315 * step)
             arc = [distances[i % n] for i in range(start_idx, end_idx)]
             valid = [d for d in arc if d > 0.01]
-            return bool(valid) and min(valid) < MIN_DIST
+            blocked = bool(valid) and min(valid) < MIN_DIST
+            if blocked:
+                logger.debug('CheckDirection: Blocked at dist %.2fm', min(valid))
+            return blocked
         except Exception as e:
             logger.debug('CheckDirection: scan error: %s', e)
             return False
@@ -190,5 +219,6 @@ def create_searching_tree(
         CheckTimeout('CheckTimeout', ctx),
         rotate_seq,
     ])
+    root.ctx = ctx  # ── [NEW] 외부(BTRunner)에서 Reset 할 수 있도록 바인딩 ──
 
     return root

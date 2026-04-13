@@ -129,16 +129,37 @@ class ControlClient:
 
     # ── 송신 ───────────────────────────────────────────────────
 
-    def send(self, payload: dict):
+    def send(self, payload: dict, retry_timeout: float = 10.0):
         """
         JSON 메시지를 개행 구분 방식으로 control_service에 전송.
-        소켓이 없으면 경고 로그 후 무시.
+        소켓이 없으면 백그라운드에서 최대 retry_timeout초 대기 후 재전송.
         """
         with self._lock:
             sock = self._sock
-        if sock is None:
-            logger.warning("소켓 없음, 메시지 미전송: %s", payload)
-            return
+
+        if sock is not None:
+            self._do_send(sock, payload)
+        else:
+            # Non-blocking retry in background thread
+            logger.warning("소켓 없음 — 백그라운드에서 재시도 (최대 %.0fs): %s", retry_timeout, payload)
+            t = threading.Thread(target=self._send_with_retry,
+                                 args=(payload, retry_timeout), daemon=True)
+            t.start()
+
+    def _send_with_retry(self, payload: dict, retry_timeout: float):
+        """백그라운드에서 소켓 연결 대기 후 전송."""
+        deadline = time.monotonic() + retry_timeout
+        while time.monotonic() < deadline:
+            with self._lock:
+                sock = self._sock
+            if sock is not None:
+                self._do_send(sock, payload)
+                return
+            time.sleep(0.5)
+        logger.warning("소켓 재시도 타임아웃, 메시지 미전송: %s", payload)
+
+    def _do_send(self, sock, payload: dict):
+        """실제 소켓 전송."""
         try:
             data = json.dumps(payload, ensure_ascii=False) + "\n"
             sock.sendall(data.encode("utf-8"))

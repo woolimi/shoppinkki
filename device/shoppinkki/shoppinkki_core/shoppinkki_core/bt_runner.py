@@ -28,6 +28,8 @@ py_trees_ros_viewer 로 실시간 시각화 가능:
 from __future__ import annotations
 
 import logging
+import os
+import time
 from typing import Callable, Optional, Set
 
 import py_trees
@@ -81,11 +83,24 @@ class BTRunner:
         bt_returning: py_trees.behaviour.Behaviour,
         on_arrived: Optional[Callable[[], None]] = None,
         on_nav_failed: Optional[Callable[[], None]] = None,
+        doll_detector: Optional[DollDetectorInterface] = None,
+        is_registration_active: Optional[Callable[[], bool]] = None,
+        is_tracking_grace_active: Optional[Callable[[], bool]] = None,
     ) -> None:
         self.sm = sm
+        self.detector = doll_detector
         self._on_arrived = on_arrived
         self._on_nav_failed = on_nav_failed
+        self._is_registration_active = is_registration_active
+        self._is_tracking_grace_active = is_tracking_grace_active
+        self._bt_tracking = bt_tracking
+        self._bt_searching = bt_searching
         self.follow_disabled: bool = False
+        self._last_search_fail_time: float = 0.0
+        self._SEARCH_COOLDOWN: float = 5.0 # Seconds
+        self._enable_idle_proactive_search: bool = (
+            os.environ.get('ENABLE_IDLE_PROACTIVE_SEARCH', 'false').lower() == 'true'
+        )
 
         # ── 루트 트리 구성 ────────────────────
         self._root = py_trees.composites.Selector(
@@ -157,6 +172,13 @@ class BTRunner:
 
     def on_state_changed(self, new_state: str) -> None:
         """상태 변경 시 진행 중인 BT의 내부 상태를 리셋."""
+        # 새 상태에 맞는 BT가 다음 tick에서 자동으로 시작됨
+        if new_state == 'SEARCHING':
+            # ── [NEW] 진입 시마다 LKP와 시작 시간을 초기화 ──
+            if hasattr(self._bt_searching, 'ctx'):
+                self._bt_searching.ctx.start_time = 0.0
+                logger.info('BTRunner: SEARCHING 진입, start_time 초기화됨 (LKP 방향 재로드)')
+
         # follow_disabled 처리
         if self.follow_disabled and new_state in ('TRACKING', 'TRACKING_CHECKOUT'):
             logger.info('BTRunner: follow_disabled — BT1 skipped for state=%s',
@@ -191,22 +213,49 @@ class BTRunner:
     def _handle_transitions(self) -> None:
         """BT 결과(SUCCESS/FAILURE)에 따른 SM 상태 전이."""
         state = self.sm.state
-
         bt = self._get_active_bt(state)
-        if bt is None or bt.status == py_trees.common.Status.RUNNING:
+        status = bt.status if bt else None
+
+        if state == 'IDLE':
+            if self._is_registration_active and self._is_registration_active(): return
+            if not self._enable_idle_proactive_search:
+                return
+            # IDLE 상태에서 인형이 아직 등록되지 않았더라도, 눈앞에 아무것도 안 보이면 일단 탐색(360 회전) 시작
+            # (주인이 어딨는지 몰라서 등록을 못하는 상황 방지, 능동적 카메라 확인)
+            if self.detector is not None and self.detector.is_connected():
+                # [User Request] Skip proactive search if registration is active
+                if self._is_registration_active and self._is_registration_active():
+                    return
+
+                if self.detector.get_latest() is None:
+                    import time
+                    elapsed = time.monotonic() - self._last_search_fail_time
+                    if elapsed >= self._SEARCH_COOLDOWN:
+                        logger.info('BTRunner: Proactive SEARCHING - no doll in sight from IDLE')
+                        self.sm.enter_searching()
+                    else:
+                        logger.debug('BTRunner: Search cooldown active (%.1fs left)', self._SEARCH_COOLDOWN - elapsed)
             return
 
-        status = bt.status
+        if bt is None or status == py_trees.common.Status.RUNNING:
+            return
 
         if state in ('TRACKING', 'TRACKING_CHECKOUT'):
+            # 추종 중 인형을 놓치면 즉시 탐색 시작
             if status == py_trees.common.Status.FAILURE:
+                if self._is_tracking_grace_active and self._is_tracking_grace_active():
+                    logger.info('BTRunner: tracking grace active, suppress SEARCHING transition')
+                    return
                 self.sm.enter_searching()
 
         elif state == 'SEARCHING':
             if status == py_trees.common.Status.SUCCESS:
                 self.sm.enter_tracking()
             elif status == py_trees.common.Status.FAILURE:
-                self.sm.enter_waiting()
+                import time
+                self._last_search_fail_time = time.monotonic()
+                logger.info('BTRunner: SEARCHING failed → returning to IDLE')
+                self.sm.enter_idle()
 
         elif state == 'GUIDING':
             if status == py_trees.common.Status.SUCCESS:

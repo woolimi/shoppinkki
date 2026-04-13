@@ -20,6 +20,9 @@ import os
 import threading
 import time
 from typing import Optional
+import struct
+import cv2
+import numpy as np
 
 import rclpy
 import tf2_ros
@@ -98,11 +101,16 @@ class ShoppinkiMainNode(Node):
         # ── DollDetector (BT보다 먼저 생성 — BT1/BT2가 참조) ──────
         YOLO_HOST = os.environ.get('YOLO_HOST', '127.0.0.1')
         YOLO_PORT = int(os.environ.get('YOLO_PORT', '5005'))
+        DOLL_MODEL_PATH = os.environ.get(
+            'DOLL_MODEL_PATH',
+            '/home/pinky/ros_ws/server/ai_service/yolo/models/best1.pt'
+        )
         if _PERCEPTION_AVAILABLE:
             self.doll_detector = DollDetector(
-                yolo_host=YOLO_HOST, yolo_port=YOLO_PORT)
+                yolo_host=YOLO_HOST, yolo_port=YOLO_PORT,
+                model_path=DOLL_MODEL_PATH)
             self.get_logger().info(
-                f'DollDetector 초기화 (YOLO {YOLO_HOST}:{YOLO_PORT})')
+                f'DollDetector 초기화 (YOLO {YOLO_HOST}:{YOLO_PORT}, model={DOLL_MODEL_PATH})')
         else:
             self.doll_detector = None
             self.get_logger().warning('shoppinkki_perception 미설치 — DollDetector 비활성화')
@@ -197,6 +205,9 @@ class ShoppinkiMainNode(Node):
             bt_returning=self._bt_returning,
             on_arrived=self._on_arrived,
             on_nav_failed=self._on_nav_failed,
+            doll_detector=self.doll_detector,
+            is_registration_active=lambda: self._registration_active,
+            is_tracking_grace_active=self._is_tracking_grace_active,
         )
         self.bt_runner.setup(node=self)
 
@@ -209,6 +220,7 @@ class ShoppinkiMainNode(Node):
             on_start_session=self._on_start_session,
             has_unpaid_items=self._has_unpaid_items,
             on_enter_registration=self._on_enter_registration,
+            on_retake_registration=self._on_retake_registration,
             on_enter_simulation=self._on_enter_simulation,
             on_registration_confirm=self._on_registration_confirm,
             on_navigate_cancel=self._on_navigate_cancel,
@@ -293,6 +305,22 @@ class ShoppinkiMainNode(Node):
         self._snapshot_rate_limit: float = 0.5
         # 고객이 /register 페이지에 접속했을 때 True → LCD 카메라 피드 표시
         self._registration_active: bool = False
+        # True after a snapshot is sent; waits for confirm/retake.
+        self._registration_waiting_confirm: bool = False
+        self._tracking_grace_until: float = 0.0
+        self.hw.bind_registration_active(lambda: self._registration_active)
+
+        # ── 카메라 및 AI 스레드 ─────────────────
+        self._cam_frame: Optional[np.ndarray] = None
+        self._ai_frame: Optional[np.ndarray] = None
+        self._ai_event = threading.Event()
+        self._ai_thread = threading.Thread(target=self._ai_loop, daemon=True)
+        self._ai_thread.start()
+
+        # ── Live Streamer (Laptop Monitor용) ─────────────────
+        self._stream_frame: Optional[bytes] = None
+        self._stream_thread = threading.Thread(target=self._stream_loop, daemon=True)
+        self._stream_thread.start()
 
         # ── 카메라 스레드 ─────────────────────
         self._cam_thread = threading.Thread(
@@ -397,7 +425,9 @@ class ShoppinkiMainNode(Node):
 
     def _on_state_changed(self, new_state: str) -> None:
         self.hw.set_led_for_state(new_state, self.sm.is_locked_return)
-        self.hw.set_lcd_for_state(new_state)
+        # Avoid state redraws while registration camera feed is active.
+        if not self._registration_active:
+            self.hw.set_lcd_for_state(new_state)
         self.bt_runner.on_state_changed(new_state)
 
     def _on_locked(self) -> None:
@@ -430,6 +460,7 @@ class ShoppinkiMainNode(Node):
 
     def _on_start_session(self, user_id: str) -> None:
         self.get_logger().info('Session started: user=%s' % user_id)
+        if self.doll_detector: self.doll_detector.reset()
 
     def _on_navigate_cancel(self) -> None:
         """fleet adapter에서 navigate_cancel 수신 — BT4 goal 취소."""
@@ -449,7 +480,17 @@ class ShoppinkiMainNode(Node):
     def _on_enter_registration(self) -> None:
         """고객이 /register 페이지에 접속: LCD 카메라 피드 전환."""
         self._registration_active = True
+        self._registration_waiting_confirm = False
         self.get_logger().info('enter_registration: 카메라 피드 활성화')
+
+    def _on_retake_registration(self) -> None:
+        """사용자가 [다시 찍기]를 눌렀을 때 새 후보 감지 재개."""
+        self._registration_waiting_confirm = False
+        if self.doll_detector is not None:
+            self.doll_detector.clear_pending_snapshot()
+
+    def _is_tracking_grace_active(self) -> bool:
+        return time.monotonic() < self._tracking_grace_until
 
     def _on_enter_simulation(self) -> None:
         """시뮬레이션 모드 진입: IDLE → TRACKING 전환 + 추종 비활성화."""
@@ -617,18 +658,16 @@ class ShoppinkiMainNode(Node):
         while rclpy.ok():
             state = self.sm.state
 
-            # 카메라가 불필요한 상태 → 프레임 읽기 건너뜀
+            # 카메라가 불필요한 상태 → 프레임 읽기 건너뜜
             if state not in _CAM_STATES:
                 time.sleep(0.2)
                 continue
 
             if _PINKYLIB_AVAILABLE and isinstance(cap, PinkyCamera):
-                frame_rgb = cap.get_frame()
-                if frame_rgb is None:
+                frame = cap.get_frame()
+                if frame is None:
                     time.sleep(0.05)
                     continue
-                # BGR로 변환 (기존 시스템 스펙)
-                frame = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
             else:
                 ret, frame = cap.read()
                 if not ret:
@@ -636,39 +675,128 @@ class ShoppinkiMainNode(Node):
                     continue
 
             self._cam_frame = frame
+            # Process for AI (Now standardizing on BGR native)
+            self._ai_frame = frame.copy() if frame is not None else None
+            self._ai_event.set()
 
-            if state == 'IDLE' and self._registration_active:
-                # 고객이 /register 접속 중 — LCD 카메라 피드 표시
-                self.hw.display_frame(frame)
-                # 인형 감지 → pending_snapshot 갱신
-                if self.doll_detector is not None:
-                    self.doll_detector.register(frame)
+            # LCD 업데이트 (지연 없이 즉시)
+            show_debug = self.doll_detector is not None and getattr(self.doll_detector, 'show_all_detections', False)
+            
+            connected = self.doll_detector.is_connected() if self.doll_detector else False
+            det_count = self.doll_detector.get_latest_count() if self.doll_detector else 0
 
-                # rate-limit: 2초마다 snapshot 발행
-                snapshot = self.doll_detector.get_pending_snapshot()
-                now = time.time()
-                if snapshot and (now - self._last_snapshot_time) >= self._snapshot_rate_limit:
-                    self._last_snapshot_time = now
-                    jpeg_bytes, bbox = snapshot
-                    b64 = base64.b64encode(jpeg_bytes).decode('ascii')
-                    msg = String()
-                    msg.data = json.dumps({
-                        'robot_id': ROBOT_ID,
-                        'image': b64,
-                        'bbox': bbox,
-                    })
-                    self._snapshot_pub.publish(msg)
-                    self.get_logger().debug(f'snapshot 발행 (bbox conf={bbox.get("confidence", 0):.2f})')
-
+            # [UNSTOPPABLE DISPLAY] Registration check FIRST — always wins over state
+            if self._registration_active:
+                # Rate-limit to ~12fps during registration (blur is CPU-heavy, SPI needs time)
+                now = time.monotonic()
+                if not hasattr(self, '_last_reg_frame_t') or (now - self._last_reg_frame_t) >= 0.083:
+                    self._last_reg_frame_t = now
+                    self.hw.display_frame(frame, connected=connected, det_count=det_count, is_registration=True, mirror=True)
             elif state in ('TRACKING', 'TRACKING_CHECKOUT', 'SEARCHING'):
-                self.hw.display_frame(frame)
-                if self.doll_detector is not None:
-                    self.doll_detector.run(frame)
+                det = self.doll_detector.get_latest() if self.doll_detector else None
+                if det:
+                    self.hw.draw_detection(frame, det)
+                self.hw.display_frame(frame, connected=connected, det_count=det_count, mirror=True)
+            elif state == 'IDLE':
+                # IDLE without registration: show QR, don't override with camera
+                pass
+            elif show_debug:
+                det = self.doll_detector.get_latest() if self.doll_detector else None
+                if det:
+                    self.hw.draw_detection(frame, det)
+                self.hw.display_frame(frame, connected=connected, det_count=det_count, mirror=True)
+            else:
+                self.hw.display_frame(frame, connected=connected, det_count=det_count, mirror=True)
+
+            # 스트림용 JPEG 인코딩
+            _, jpeg = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 60])
+            self._stream_frame = jpeg.tobytes()
 
         if _PINKYLIB_AVAILABLE and isinstance(cap, PinkyCamera):
             cap.close()
         elif hasattr(cap, 'release'):
             cap.release()
+
+    def _ai_loop(self) -> None:
+        """AI 연산을 수행하는 백그라운드 스레드.
+        
+        카메라 루프에서 신호를 받으면 최신 프레임에 대해 YOLO 및 ReID를 수행한다.
+        네트워킹/연산 지연이 LCD 피드에 영향을 주지 않도록 분리됨.
+        """
+        while rclpy.ok():
+            # 신호 대기 (Timeout을 두어 rclpy.ok() 체크 기회 확보)
+            if not self._ai_event.wait(timeout=1.0):
+                continue
+            
+            self._ai_event.clear()
+            frame = self._ai_frame
+            if frame is None:
+                continue
+
+            state = self.sm.state
+
+            if self.doll_detector is not None:
+                show_debug = getattr(self.doll_detector, 'show_all_detections', False)
+                
+                if state == 'IDLE' and self._registration_active:
+                    # 인형 등록 중 (Snapshot 쿼리)
+                    if not self._registration_waiting_confirm:
+                        self.doll_detector.register(frame)
+                        snapshot = self.doll_detector.get_pending_snapshot()
+                        now = time.time()
+                        if snapshot and (now - self._last_snapshot_time) >= self._snapshot_rate_limit:
+                            self._last_snapshot_time = now
+                            jpeg_bytes, bbox = snapshot
+                            b64 = base64.b64encode(jpeg_bytes).decode('ascii')
+                            msg = String()
+                            msg.data = json.dumps({
+                                'robot_id': ROBOT_ID,
+                                'image': b64,
+                                'bbox': bbox,
+                            })
+                            self._snapshot_pub.publish(msg)
+                            self._registration_waiting_confirm = True
+                            # Keep pending confirm frame/bbox in detector for exact confirm.
+                            self.doll_detector.clear_pending_snapshot()
+                elif (state in ('TRACKING', 'TRACKING_CHECKOUT', 'SEARCHING') or show_debug) and not self._registration_active:
+                    # 추종 중이거나 디버그 모드일 때 실시간 감지 실행 (등록 중에는 스킵)
+                    self.doll_detector.run(frame)
+
+            elif state in ('TRACKING', 'TRACKING_CHECKOUT', 'SEARCHING'):
+                # 추종/탐색 중 (YOLO + ReID + Tracker)
+                if self.doll_detector is not None:
+                    self.doll_detector.run(frame)
+
+    def _stream_loop(self) -> None:
+        """가벼운 TCP/MJPEG 스트리머."""
+        import socket
+        port = 5007
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(('0.0.0.0', port))
+            sock.listen(1)
+            self.get_logger().info(f'Monitor Streamer 시작됨 (Port {port})')
+        except Exception as e:
+            self.get_logger().error(f'Streamer Bind 실패: {e}')
+            return
+
+        while rclpy.ok():
+            try:
+                conn, addr = sock.accept()
+                self.get_logger().info(f'Monitor Dashboard 연결됨: {addr}')
+                while rclpy.ok():
+                    frame = self._stream_frame
+                    if frame is None:
+                        time.sleep(0.1)
+                        continue
+                    
+                    # MJPEG 헤더 없이 단순 바이트 전송 (프레임 구분은 size로)
+                    size = len(frame)
+                    conn.sendall(struct.pack("!I", size) + frame)
+                    time.sleep(0.05) # ~20 FPS limit
+            except Exception:
+                time.sleep(1.0)
 
     # ──────────────────────────────────────────
     # 인형 등록 확인 콜백
@@ -690,6 +818,9 @@ class ShoppinkiMainNode(Node):
         self.doll_detector.confirm_registration(frame, bbox)
         self.get_logger().info('registration_confirm: 등록 완료 → TRACKING 진입')
         self._registration_active = False
+        self._registration_waiting_confirm = False
+        # Prevent immediate TRACKING→SEARCHING flapping right after confirmation.
+        self._tracking_grace_until = time.monotonic() + 5.0
         self.sm.enter_tracking()
 
 

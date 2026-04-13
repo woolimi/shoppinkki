@@ -68,7 +68,7 @@ def main():
     host = os.environ.get('CONTROL_SERVICE_HOST', '127.0.0.1')
     port = int(os.environ.get('CONTROL_SERVICE_PORT', '8080'))
     rest_port = int(os.environ.get('REST_PORT', '8081'))
-    robot_ids_str = os.environ.get('ROBOT_IDS', '18,54')
+    robot_ids_str = os.environ.get('ROBOT_IDS', '11,18,54')
     robot_ids = [rid.strip() for rid in robot_ids_str.split(',') if rid.strip()]
 
     app = QApplication(sys.argv)

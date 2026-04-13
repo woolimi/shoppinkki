@@ -71,6 +71,8 @@
   "use strict";
 
   const socket = io();
+  // Freeze candidate image until user explicitly requests retake.
+  let registrationImageLocked = false;
 
   // 연결 즉시 enter_registration 전송 → Pi LCD 카메라 피드 전환
   socket.on("connect", () => {
@@ -92,10 +94,12 @@
   // 인형 감지 → 스냅샷 확인 패널로 전환
   socket.on("doll_detected", (data) => {
     if (!data || !data.image) return;
+    if (registrationImageLocked) return;
     document.getElementById("snapshot-img").src = "data:image/jpeg;base64," + data.image;
     document.getElementById("pending-bbox").value = JSON.stringify(data.bbox || {});
     document.getElementById("panel-waiting").style.display = "none";
     document.getElementById("panel-confirm").style.display = "block";
+    registrationImageLocked = true;
   });
 
   // 등록 완료 or 시뮬레이션 모드 → /main으로 이동
@@ -120,6 +124,8 @@
 
   // [다시 찍기] 클릭
   function retakeRegistration() {
+    registrationImageLocked = false;
+    socket.emit("retake_registration", {});
     document.getElementById("pending-bbox").value = "{}";
     document.getElementById("panel-confirm").style.display = "none";
     document.getElementById("panel-waiting").style.display = "block";

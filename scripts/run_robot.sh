@@ -21,7 +21,7 @@
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROS_WS="$(dirname "$SCRIPTS_DIR")"
 ROBOT_ID="${1:-${PINKY_ID:-54}}"
-CUSTOMER_WEB_HOST="${CUSTOMER_WEB_HOST:-192.168.102.100}"
+CUSTOMER_WEB_HOST="${CUSTOMER_WEB_HOST:-192.168.4.6}"
 SESSION="sp_robot"
 
 source "$SCRIPTS_DIR/_ros_env.sh"

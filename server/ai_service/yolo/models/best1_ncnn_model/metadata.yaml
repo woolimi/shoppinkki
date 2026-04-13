@@ -1,0 +1,19 @@
+description: Ultralytics YOLO11n-seg model trained on doll_data.yaml
+author: Ultralytics
+date: '2026-04-14T11:05:59.422885'
+version: 8.4.15
+license: AGPL-3.0 License (https://ultralytics.com/license)
+docs: https://docs.ultralytics.com
+stride: 32
+task: segment
+batch: 1
+imgsz:
+- 640
+- 640
+names:
+  0: doll
+args:
+  batch: 1
+  half: false
+channels: 3
+end2end: false

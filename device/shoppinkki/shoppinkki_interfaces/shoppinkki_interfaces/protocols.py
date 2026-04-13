@@ -29,6 +29,8 @@ class Detection:
     area: float        # bounding-box area      (pixels²)
     confidence: float  # detection confidence   (0.0 ~ 1.0)
     class_name: str = 'doll'
+    bbox: Optional[List[float]] = None  # [x1, y1, x2, y2]
+    mask: Optional[List[List[float]]] = None  # [[x1, y1], [x2, y2], ...]
 
 
 @dataclass
