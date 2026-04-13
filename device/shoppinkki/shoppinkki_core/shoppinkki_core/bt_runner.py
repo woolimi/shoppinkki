@@ -116,9 +116,9 @@ class BTRunner:
             bt_waiting,
         ])
 
-        # BT4: GUIDING (memory=True: SUCCESS 후 재실행 방지)
+        # BT4: GUIDING (memory=False: 매 tick StateGuard 재평가)
         bt4_seq = py_trees.composites.Sequence(
-            name='[GUIDING]', memory=True)
+            name='[GUIDING]', memory=False)
         bt4_seq.add_children([
             StateGuard('State=GUIDING?', sm, {'GUIDING'}),
             bt_guiding,
@@ -141,6 +141,7 @@ class BTRunner:
         # BT 인스턴스 참조 (외부 접근용)
         self._bt_tracking = bt_tracking
         self._bt_searching = bt_searching
+        self._bt_guiding = bt_guiding
 
         logger.info('BTRunner: py_trees 트리 구성 완료')
         logger.info('\n' + py_trees.display.unicode_tree(root=self._root))
@@ -160,6 +161,10 @@ class BTRunner:
         if self.follow_disabled and new_state in ('TRACKING', 'TRACKING_CHECKOUT'):
             logger.info('BTRunner: follow_disabled — BT1 skipped for state=%s',
                         new_state)
+
+        # GUIDING 이탈 시 진행 중인 Nav2 goal 취소
+        if new_state != 'GUIDING' and hasattr(self._bt_guiding, 'cancel_nav'):
+            self._bt_guiding.cancel_nav()
 
         # 상태 전환 시 모든 Sequence를 리셋하여 다음 tick에서 깨끗하게 시작
         for child in self._root.children:
