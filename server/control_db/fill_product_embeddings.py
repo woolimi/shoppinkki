@@ -25,7 +25,13 @@ EXPECTED_DIM = 384
 
 def load_env_file() -> None:
     """Load .env values when env vars are not set."""
-    env_path = Path(__file__).resolve().parents[2] / ".env"
+    # 컨테이너와 로컬 환경 모두에서 작동하도록 경로 조정
+    current_dir = Path(__file__).resolve().parent
+    env_path = current_dir / ".env"
+    if not env_path.exists():
+        env_path = current_dir.parent / ".env"
+    if not env_path.exists():
+        env_path = Path("/app/.env")
     if not env_path.exists():
         return
 
