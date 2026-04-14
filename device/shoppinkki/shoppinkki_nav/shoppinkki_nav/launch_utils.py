@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 
 # DB 미접속 시 fallback (seed_data.sql 충전소 좌표와 동기화)
 _FALLBACK_POSES: dict[str, dict[str, float]] = {
-    '54': {'x': 0.0, 'y': -0.899, 'yaw': 0.0},  # P2
-    '18': {'x': 0.0, 'y': -0.606, 'yaw': 0.0},  # P1
+    '54': {'x': 0.12, 'y': -0.899, 'yaw': 0.0},  # P2
+    '18': {'x': 0.12, 'y': -0.606, 'yaw': 0.0},  # P1
 }
 _DEFAULT_POSE = {'x': 0.0, 'y': 0.0, 'yaw': 0.0}
 

@@ -100,7 +100,7 @@ def generate_launch_description():
              parameters=[{
                  'use_sim_time': LaunchConfiguration('use_sim_time'),
                  'autostart': True,
-                 'bond_timeout': 10.0,
+                 'bond_timeout': 20.0,
                  'node_names': [
                      'map_server', 'amcl',
                      'controller_server', 'smoother_server',
