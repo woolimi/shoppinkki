@@ -124,21 +124,23 @@ def search_context_in_db(name: str) -> Optional[dict]:
         synonyms = {'카운터': '결제 구역', '계산대': '결제 구역', '캐셔': '결제 구역'}
         exact_match_name = synonyms.get(name, name)
         
-        # 0. 텍스트 완전 일치 검색 (상품명 또는 구역명 우선)
-        # 일치할 경우 거리(distance)를 최소값(0.0)으로 해서 즉시 반환
+        # 0. 텍스트 부분/완전 일치 검색 (질문 내에 상품명/구역명이 포함되어 있는지 확인)
         exact_query = """
-            SELECT 'product' as type, p.product_name as display_name, z.zone_id, z.zone_name, z.zone_type, 0.0 as distance,
-                   ze.empathy_prefix, ze.required_keywords
-            FROM product p
-            JOIN zone z ON p.zone_id = z.zone_id
-            LEFT JOIN zone_text_embedding ze ON z.zone_id = ze.zone_id
-            WHERE p.product_name = %s
-            UNION ALL
-            SELECT 'zone' as type, z.zone_name as display_name, z.zone_id, z.zone_name, z.zone_type, 0.01 as distance,
-                   ze.empathy_prefix, ze.required_keywords
-            FROM zone z
-            LEFT JOIN zone_text_embedding ze ON z.zone_id = ze.zone_id
-            WHERE z.zone_name = %s
+            SELECT * FROM (
+                SELECT 'product' as type, p.product_name as display_name, z.zone_id, z.zone_name, z.zone_type, 0.01 as distance,
+                       ze.empathy_prefix, ze.required_keywords
+                FROM product p
+                JOIN zone z ON p.zone_id = z.zone_id
+                LEFT JOIN zone_text_embedding ze ON z.zone_id = ze.zone_id
+                WHERE LOWER(%s) LIKE '%%' || LOWER(p.product_name) || '%%'
+                UNION ALL
+                SELECT 'zone' as type, z.zone_name as display_name, z.zone_id, z.zone_name, z.zone_type, 0.02 as distance,
+                       ze.empathy_prefix, ze.required_keywords
+                FROM zone z
+                LEFT JOIN zone_text_embedding ze ON z.zone_id = ze.zone_id
+                WHERE LOWER(%s) LIKE '%%' || LOWER(z.zone_name) || '%%'
+            ) AS match_union
+            ORDER BY LENGTH(display_name) DESC, distance ASC
             LIMIT 1;
         """
         cursor.execute(exact_query, (exact_match_name, exact_match_name))
@@ -160,7 +162,7 @@ def search_context_in_db(name: str) -> Optional[dict]:
                 JOIN product p ON te.product_id = p.product_id
                 JOIN zone z ON p.zone_id = z.zone_id
                 LEFT JOIN zone_text_embedding ze ON z.zone_id = ze.zone_id
-                WHERE (te.embedding <=> %s::vector) < 0.42
+                WHERE (te.embedding <=> %s::vector) < 0.40
                 
                 UNION ALL
                 
@@ -171,7 +173,7 @@ def search_context_in_db(name: str) -> Optional[dict]:
                        ze.required_keywords
                 FROM zone_text_embedding ze
                 JOIN zone z ON ze.zone_id = z.zone_id
-                WHERE (ze.embedding <=> %s::vector) < 0.42
+                WHERE (ze.embedding <=> %s::vector) < 0.40
             ) as combined_search
             ORDER BY distance ASC
             LIMIT 1;
@@ -206,8 +208,8 @@ def extract_keywords(user_query: str) -> list[str]:
             f"당신은 매장 상품 카테고리 분석기입니다. 다음 질문에서 검색에 필요한 핵심 '카테고리 명사'나 '상품명'을 최대 3개만 뽑으세요.\n"
             f"주의 포인트:\n"
             f"1. 반드시 질문 내용에 포함되거나 직접적으로 연관된 단어만 추출하세요.\n"
-            f"2. 만약 질문이 매장과 관련이 없거나(예: 게임 대사, 타 분야 질문), 무의미한 말(예: 횡설수설, 외계어)인 경우 반드시!!! '알 수 없음'이라고만 대답하세요. 절대 억지로 구역을 매핑하지 마세요.\n"
-            f"3. 질문과 상관없는 구역을 임의로 추가하지 마세요.\n"
+            f"2. 마트 도착, 시작, 환영 등은 반드시 '입구' 카테고리로 분류하세요. 절대로 '출구'나 '퇴장'과 혼동하지 마세요.\n"
+            f"3. 나갈래, 끝, 계산완료 등은 '출구' 또는 '결제 구역'으로 분류하세요.\n"
             f"4. 오직 키워드만 쉼표로 구분하여 출력하세요. 설명은 필요 없습니다.\n"
             f"매장의 유효한 구역: 화장실, 입구, 출구, 결제 구역, 가전제품, 과자, 해산물, 육류, 채소, 음료, 베이커리, 음식\n"
             f"{examples_text}"
@@ -243,7 +245,6 @@ def is_nonsense(text: str) -> bool:
         return True
     
     # 2. 한글 자음/모음만 나열된 경우 (예: ㄱㄴㄷㄹ, ㅏㅑㅓㅕ)
-    # [ㄱ-ㅎ]는 \u3131-\u314E, [ㅏ-ㅣ]는 \u314F-\u3163
     if re.search(r'^[\u3131-\u3163]+$', clean_text):
         logger.info('is_nonsense: 자음/모음 나열 감지')
         return True
@@ -260,50 +261,41 @@ def is_nonsense(text: str) -> bool:
         words = re.findall(r'[a-zA-Z]+', text.lower())
         if words:
             if not any(word in known_english for word in words) and len(clean_text) > 5:
+                # 영어만 있는데 알려진 마트 용어가 하나도 없으면 nonsense 취급
                 logger.info('is_nonsense: 무의미한 영문 감지')
                 return True
     
     return False
 
-app = Flask(__name__)
-app.json.ensure_ascii = False
+def get_db_routing(user_query: str):
+    """
+    DB의 intent_routing 테이블을 조회하여 고정 키워드 매핑 수행.
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        # 우선순위 높은 순으로 정렬하여 조회
+        cursor.execute("SELECT intent_routing.keywords, intent_routing.zone_id, zone.zone_name, intent_routing.item_name, intent_routing.empathy_prefix FROM intent_routing JOIN zone ON intent_routing.zone_id = zone.zone_id ORDER BY intent_routing.priority DESC")
+        routings = cursor.fetchall()
+        cursor.close()
+        conn.close()
 
-def get_predefined_routing(user_query: str):
-    """
-    고정 키워드(감정, 신체 상태, 특수 구역)를 코드 레벨에서 즉시 매핑 (LLM 우회).
-    """
-    # (키워드 목록, zone_id, zone_name, item_name, empathy_prefix)
-    ROUTING_MAP = [
-        # 1. 감정 상태
-        (["우울", "슬퍼", "슬프다", "눈물", "울고 싶", "기분이 안 좋"],
-         2, "과자", "초콜릿", "기분이 조금 가라앉으셨나요? 달콤한 초콜릿으로 기분 전환을 해보시는 건 어떨까요?"),
-        (["힘들", "스트레스", "술 생각", "술 한 잔", "고된"],
-         6, "음료", "맥주", "오늘 정말 고된 하루를 보내셨군요. 시원한 맥주 한 잔으로 스트레스를 날려버리시는 건 어떨까요?"),
-        (["피곤", "졸려", "잠 깨", "잠이 와", "커피 생각", "카페인"],
-         6, "음료", "커피", "정신이 번쩍 드는 시원한 커피 한 잔 어떠신가요?"),
-        
-        # 2. 신체 상태 (허기, 갈증)
-        (["배고파", "배고프", "배고픈", "허기", "식사"],
-         8, "음식", "도시락", "배가 많이 고프시군요! 든든한 도시락이나 식사류 코너로 안내해 드릴게요."),
-        (["목말라", "목이 말", "마실 거", "음료수", "마실것"],
-         6, "음료", "시원한 음료", "목이 많이 마르시죠? 시원한 음료는 어떠신가요?"),
-         
-        # 3. 특수 구역 (직관 매핑)
-        (["화장실", "급해", "restroom", "toilet"], 100, "화장실", "화장실", "정말 급하시군요!"),
-        (["입구", "들어온", "시작", "입구 어디"], 110, "입구", "입구", "쇼핑의 시작! 마트 입구입니다."),
-        (["출구", "나갈", "나가고", "끝", "출구 어디"], 120, "출구", "출구", "오늘 쇼핑은 즐거우셨나요? 출구로 안내해 드릴게요."),
-        (["계산", "결제", "카운터", "계산대", "캐셔"], 150, "결제 구역", "결제 구역", "계산을 도와드릴게요."),
-    ]
-    for keywords, zone_id, zone_name, item_name, empathy in ROUTING_MAP:
-        if any(kw in user_query.lower() for kw in keywords):
-            logger.info('사전 정의 라우팅 매칭: "%s" -> %s (%s)', user_query, zone_name, item_name)
-            return {
-                'zone_id': zone_id,
-                'zone_name': zone_name,
-                'empathy_prefix': empathy
-            }, item_name
+        clean_query = user_query.lower()
+        for row in routings:
+            keywords = [k.strip().lower() for k in row['keywords'].split(',')]
+            if any(kw in clean_query for kw in keywords):
+                logger.info('DB 인텐트 라우팅 매칭: "%s" -> %s (%s)', user_query, row['zone_name'], row['item_name'])
+                return {
+                    'zone_id': row['zone_id'],
+                    'zone_name': row['zone_name'],
+                    'empathy_prefix': row['empathy_prefix']
+                }, row['item_name']
+    except Exception as e:
+        logger.error("DB 라우팅 조회 실패: %s", e)
     return None, None
 
+app = Flask(__name__)
+app.json.ensure_ascii = False
 
 @app.route('/query', methods=['GET'])
 def query():
@@ -312,7 +304,7 @@ def query():
     
     logger.info('검색 요청: "%s"', name)
 
-    # ── [0순위] 무의미한 입력 방어 ──
+    # ── [0순위] 무의미한 입력 및 블랙리스트 방어 ──
     if is_nonsense(name):
         logger.info('무의미한 입력 차단: "%s"', name)
         return jsonify({
@@ -320,8 +312,16 @@ def query():
             'error': 'not_found'
         }), 200
 
-    # ── [1순위] 사전 정의된 라우팅 (감정/상태/특수구역) ──
-    pre_zone, pre_item = get_predefined_routing(name)
+    blacklist = {'강아지', '고양이', '동물', '날씨', '뉴스', '로또', '코인', '비트코인', '정치', '게임', '티어', '이마트', '홈플러스', '쿠팡'}
+    if any(bl in name for bl in blacklist):
+        logger.info('블랙리스트 입력 차단: "%s"', name)
+        return jsonify({
+            'answer': "죄송합니다. 해당 요청은 본 매장 안내 서비스의 범위를 벗어난 내용입니다. 마트 상품 및 위치에 대해 문의해 주세요.",
+            'error': 'not_found'
+        }), 200
+
+    # ── [1순위] DB 기반 인텐트 라우팅 (감정/상태/특수구역) ──
+    pre_zone, pre_item = get_db_routing(name)
     if pre_zone:
         zone_name = pre_zone['zone_name']
         empathy   = pre_zone.get('empathy_prefix') or ""
@@ -334,13 +334,10 @@ def query():
             c = ord(w[-1]) - 44032
             if c < 0 or c > 11171: return "은(는)"
             return "은" if c % 28 > 0 else "는"
-        # 특수 구역(item_name == zone_name)이면 중복 방지
         if pre_item == zone_name:
-            # empathy에 이미 '안내'가 포함된 경우 그대로, 아니면 추가
             if "안내" in empathy:
                 answer = f"{empathy.strip()}"
             else:
-                # 한국어 조사 '으로/로' 자동 처리 (ㄹ받침은 '로')
                 last_char = clean_zone[-1] if clean_zone else ''
                 jongseong = (ord(last_char) - 44032) % 28 if '\uAC00' <= last_char <= '\uD7A3' else 0
                 ro = '으로' if jongseong > 0 and jongseong != 8 else '로'
@@ -358,54 +355,43 @@ def query():
             'empathy':     empathy
         })
 
-    # 1. 원본 질문을 최우선 순위로, 추출 키워드를 부가 순위로 설정 (순서가 매우 중요)
+    # 2. 키워드 추출 및 벡터 검색
     extracted_keywords = extract_keywords(name)
     if not extracted_keywords or "알 수 없음" in extracted_keywords:
         extracted_keywords = []
         logger.info('LLM 알 수 없음/빈 키워드 → 원본만으로 벡터 검색: "%s"', name)
 
-    # ── [쓰레기 입력 방어] ──
-    # 한글이 전혀 없는 입력(예: asdfghjkl, zzzzz)은 LLM 추출 키워드를 신뢰할 수 없음.
-    # LLM이 무의미한 문자열에서 '화장실', '출구' 같은 유효 구역명을 환각할 수 있으므로,
-    # 한글이 없으면 원본 쿼리만으로 벡터 검색 → 임계값 초과 → not_found 로 자연스럽게 거절.
     has_korean = any('\uAC00' <= ch <= '\uD7A3' or '\u3131' <= ch <= '\u3163' for ch in name)
     if not has_korean:
         extracted_keywords = []
         logger.info('한글 없는 입력 감지 → LLM 추출 키워드 무시: "%s"', name)
 
-    # 원본 name을 리스트의 맨 처음에 배치하여 LLM 변조 방지 (입구 -> 출구 방어)
     search_candidates = list(dict.fromkeys([name] + extracted_keywords))
-
     logger.info('검색 후보 키워드: %s', search_candidates)
 
     best_result = None
     min_dist = 1.0
     
-    # 2. 각 후보 키워드별 벡터 검색 수행
     for idx, kw in enumerate(search_candidates):
         res = search_context_in_db(kw)
         if res:
-            dist = res['distance']
-            zone_id = res['zone_id']
+            dist = float(res['distance'])
             
-            # [특수 구역 방어 로직 - 100% DB 기반] 
-            # 필수 키워드가 DB에 정의된 경우, 해당 단어가 검색어에 없으면 페널티 부여
             required_kws = res.get('required_keywords')
             if required_kws:
                 is_explicit = any(word in kw for word in required_kws)
                 if not is_explicit:
                     dist += 0.3 # 페널티 적용
             
-            logger.info('  - 후보 [%d] 키워드 [%s] 매칭 후보: %s (Weight-Dist: %.4f, Original: %.4f)', idx, kw, res['display_name'], dist, res['distance'])
+            logger.info('  - 후보 [%d] 키워드 [%s] 매칭 후보: %s (Weight-Dist: %.4f, Original: %.4f)', idx, kw, res['display_name'], dist, float(res['distance']))
             
-            if dist < min_dist and dist < 0.42:
+            if dist < min_dist and dist < 0.28: # 임계값 최종 강화 (0.30 -> 0.28)
                 min_dist = dist
                 best_result = res
                 
-                # [조기 종료 로직 - DB 기반]
-                # 원본 질문이 특수 구역 필수 키워드와 함께 매우 낮은 거리로 검색되면 즉시 확정
-                if idx == 0 and res.get('required_keywords') and dist < 0.3:
-                    logger.info('  - 특수 구역 고정 매칭 발견 (조기 종료): %s', res['display_name'])
+                # 조기 종료: 매우 정확한 매칭
+                if dist <= 0.05:
+                    logger.info('  - 조기 종료 매칭 (Distance %.4f): %s', dist, res['display_name'])
                     break
         else:
             logger.info('  - 후보 [%d] 키워드 [%s] 매칭 실패 (임계값 초과)', idx, kw)
@@ -415,34 +401,21 @@ def query():
         zone_name = best_result['zone_name']
         empathy = best_result.get('empathy_prefix')
         
-        # ── [100% 데이터 기반 답변 조립] ──
-        # 한국어 조사(은/는) 처리 로직
         def get_josa(word):
             if not word: return "은(는)"
             char_code = ord(word[-1]) - 44032
             if char_code < 0 or char_code > 11171: return "은(는)"
             return "은" if char_code % 28 > 0 else "는"
 
-        # ── [지능형 주어(Display Name) 결정 로직] ──
-        # 1. 추천 상품이 공감 멘트에 포함되어 있다면 (예: 포카칩), 그 상품을 주어로 사용
-        if empathy and "어떠신가요" in empathy:
-            import re
-            match = re.search(r'([가-힣]+)은 어떠신가요|([가-힣]+)는 어떠신가요', empathy)
-            if match:
-                display_name = match.group(1) or match.group(2)
-        # 2. 질문이 매우 짧고(5자 이내) 공백이 없어야 사용자 원본어 사용 (삼겹살, 콜라 등)
-        elif len(name) <= 5 and " " not in name and float(best_result.get('distance', 1.0)) < 0.2:
-             display_name = name
-        # 3. 그 외 문장이거나 긴 질문이면 AI가 찾은 핵심 명칭(display_name) 사용
+        # display_name 결정: 아주 정확한 매칭이거나 명시적인 상품 요청인 경우 해당 명칭 사용
+        if float(best_result.get('distance', 1.0)) < 0.2:
+             display_name = best_result['display_name']
         else:
              display_name = best_result['display_name']
 
-        # 구역명에서 '구역'이라는 단어 보존 여부 결정 및 '코너' 접미사 제어
-        # 입구, 출구, 화장실, 결제 구역은 '코너'를 붙이지 않음
         no_corner_list = ['입구', '출구', '화장실', '결제 구역']
         is_no_corner = any(nc in zone_name for nc in no_corner_list)
         
-        # '코너'를 붙이지 않는 구역이면 원본 명칭 사용, 아니면 '구역' 제거 후 '코너' 붙임
         if is_no_corner:
             clean_zone_name = zone_name.strip()
             suffix = ""
@@ -453,31 +426,28 @@ def query():
         josa_zone = get_josa(clean_zone_name + suffix)
         josa_disp = get_josa(display_name)
         
-        # 3. 답변 조립
-        # 직접 구역명/상품명을 명시한 경우(정확 일치, distance ≤ 0.01)는 공감 생략
         is_exact_match = float(best_result.get('distance', 1.0)) <= 0.01
         use_empathy = empathy and not is_exact_match
         
-        if use_empathy:
-            if display_name == clean_zone_name:
-                answer = f"{empathy.strip()} {clean_zone_name}{suffix}{josa_zone} 여기에 있습니다."
-            else:
-                answer = f"{empathy.strip()} {display_name}{josa_disp} {clean_zone_name}{suffix}에 있습니다."
+        # ── [응답 생성 로직 개선] ──
+        # 구역 검색 시 상품명 언급 지양
+        if best_result['type'] == 'zone' or (display_name == clean_zone_name):
+            _last = (clean_zone_name + suffix)[-1] if (clean_zone_name + suffix) else ''
+            _js = (ord(_last) - 44032) % 28 if '\uAC00' <= _last <= '\uD7A3' else 0
+            _ro = '으로' if _js > 0 and _js != 8 else '로'
+            answer = f"{clean_zone_name}{suffix}{_ro} 안내해 드릴까요?"
+            if empathy and not is_exact_match:
+                answer = f"{empathy.strip()} {answer}"
         else:
-            if display_name == clean_zone_name:
-                # 한국어 조사 '으로/로' 자동 처리 (ㄹ받침은 '로')
-                _last = (clean_zone_name + suffix)[-1] if (clean_zone_name + suffix) else ''
-                _js = (ord(_last) - 44032) % 28 if '\uAC00' <= _last <= '\uD7A3' else 0
-                _ro = '으로' if _js > 0 and _js != 8 else '로'
-                answer = f"{clean_zone_name}{suffix}{_ro} 안내해 드릴까요?"
+            josa_disp = get_josa(display_name)
+            if use_empathy:
+                answer = f"{empathy.strip()} {display_name}{josa_disp} {clean_zone_name}{suffix}에 있습니다."
             else:
                 answer = f"{display_name}{josa_disp} {clean_zone_name}{suffix}에 있습니다."
         
-        # 최종 안내 문구 추가
         if "안내" not in answer:
             answer += " 안내를 시작할까요?"
         
-        # 최종 정제 (중복 조사 및 명칭 정리)
         answer = str(answer).replace(' 코너 코너', ' 코너').replace('  ', ' ').replace('"', '').replace("'", "").strip()
         
         return jsonify({
