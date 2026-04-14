@@ -258,7 +258,7 @@ class RobotAdapter:
     def _send_cmd(self, payload: dict) -> None:
         url = f'{self._rest_base}/robot/{self.robot_id}/cmd'
         try:
-            resp = requests.post(url, json=payload, timeout=3.0)
+            resp = requests.post(url, json=payload, timeout=8.0)
             if resp.status_code != 200:
                 logger.warning('[%s] cmd 응답 %d: %s',
                                self.robot_id, resp.status_code, resp.text[:80])
