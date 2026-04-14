@@ -675,27 +675,74 @@ class ShoppinkiMainNode(Node):
             self.get_logger().warning('cv2 없음 — 카메라 루프 비활성화')
             return
 
-        if not _PINKYLIB_AVAILABLE:
-            self.get_logger().warning('pinkylib 없음 — camera loop를 VideoCapture(0)으로 전환 시도')
-            cap = cv2.VideoCapture(int(os.environ.get('CAMERA_INDEX', '0')))
-        else:
+        def _open_camera():
+            if _PINKYLIB_AVAILABLE:
+                try:
+                    cam = PinkyCamera()
+                    cam.start()
+                    self.get_logger().info('pinkylib.Camera started')
+                    return cam
+                except Exception as e:
+                    self.get_logger().warning(
+                        f'pinkylib.Camera 시작 실패: {e} — VideoCapture로 전환'
+                    )
+
+            self.get_logger().warning(
+                'pinkylib 없음/실패 — camera loop를 VideoCapture로 전환 시도'
+            )
+            cam = cv2.VideoCapture(int(os.environ.get('CAMERA_INDEX', '0')))
+            if hasattr(cam, 'isOpened') and not cam.isOpened():
+                self.get_logger().warning('VideoCapture 열기 실패')
+                if hasattr(cam, 'release'):
+                    cam.release()
+                return None
+            self.get_logger().info('cv2.VideoCapture started')
+            return cam
+
+        def _close_camera(cam) -> None:
             try:
-                cap = PinkyCamera()
-                cap.start()
-                self.get_logger().info('pinkylib.Camera started')
-            except Exception as e:
-                self.get_logger().warning(f'pinkylib.Camera 시작 실패: {e} — VideoCapture(0)으로 전환')
-                cap = cv2.VideoCapture(int(os.environ.get('CAMERA_INDEX', '0')))
+                if _PINKYLIB_AVAILABLE and isinstance(cam, PinkyCamera):
+                    cam.close()
+                elif hasattr(cam, 'release'):
+                    cam.release()
+            except Exception:
+                pass
 
-        if not cap.isOpened() if not _PINKYLIB_AVAILABLE or isinstance(cap, cv2.VideoCapture) else False:
-             self.get_logger().warning(f'카메라 열기 실패 — 카메라 루프 종료')
-             return
-
-        self.get_logger().info(f'카메라 루프 시작')
+        cap = None
+        open_retry_sec = 1.0
+        read_failures = 0
+        camera_paused_for_sim = False
+        self.get_logger().info('카메라 루프 시작')
 
         _CAM_STATES = {'IDLE', 'TRACKING', 'TRACKING_CHECKOUT', 'SEARCHING'}
 
         while rclpy.ok():
+            # 시뮬레이션 모드(follow_disabled)에서는 Pi 카메라 점유를 내려
+            # 웹(노트북/휴대폰) QR 카메라와의 충돌(NoReadableError)을 피한다.
+            if self.follow_disabled:
+                if cap is not None:
+                    _close_camera(cap)
+                    cap = None
+                if not camera_paused_for_sim:
+                    self.get_logger().info('simulation_mode: Pi camera paused')
+                    camera_paused_for_sim = True
+                time.sleep(0.2)
+                continue
+
+            if camera_paused_for_sim:
+                self.get_logger().info('simulation_mode off: Pi camera resume')
+                camera_paused_for_sim = False
+
+            if cap is None:
+                cap = _open_camera()
+                if cap is None:
+                    time.sleep(open_retry_sec)
+                    open_retry_sec = min(open_retry_sec * 2.0, 5.0)
+                    continue
+                # 성공하면 재시도 간격/실패 카운터 리셋
+                open_retry_sec = 1.0
+                read_failures = 0
+
             state = self.sm.state
 
             # 카메라가 불필요한 상태 → 프레임 읽기 건너뜜
@@ -703,16 +750,32 @@ class ShoppinkiMainNode(Node):
                 time.sleep(0.2)
                 continue
 
-            if _PINKYLIB_AVAILABLE and isinstance(cap, PinkyCamera):
-                frame = cap.get_frame()
-                if frame is None:
-                    time.sleep(0.05)
-                    continue
-            else:
-                ret, frame = cap.read()
-                if not ret:
-                    time.sleep(0.05)
-                    continue
+            try:
+                if _PINKYLIB_AVAILABLE and isinstance(cap, PinkyCamera):
+                    frame_rgb = cap.get_frame()
+                    if frame_rgb is None:
+                        raise RuntimeError('pinky camera returned empty frame')
+                    # BGR로 변환 (기존 시스템 스펙)
+                    frame = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+                else:
+                    ret, frame = cap.read()
+                    if not ret:
+                        raise RuntimeError('cv2 camera read failed')
+                read_failures = 0
+            except Exception as e:
+                read_failures += 1
+                if read_failures in (1, 10):
+                    self.get_logger().warning(
+                        '카메라 프레임 읽기 실패(%d): %s', read_failures, str(e)
+                    )
+                # 연속 실패 시 카메라만 재오픈하고 노드는 계속 유지
+                if read_failures >= 10:
+                    self.get_logger().warning('카메라 재오픈 시도')
+                    _close_camera(cap)
+                    cap = None
+                    read_failures = 0
+                time.sleep(0.05)
+                continue
 
             self._cam_frame = frame
             # Process for AI (Now standardizing on BGR native)
@@ -752,10 +815,8 @@ class ShoppinkiMainNode(Node):
             _, jpeg = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 60])
             self._stream_frame = jpeg.tobytes()
 
-        if _PINKYLIB_AVAILABLE and isinstance(cap, PinkyCamera):
-            cap.close()
-        elif hasattr(cap, 'release'):
-            cap.release()
+        if cap is not None:
+            _close_camera(cap)
 
     def _ai_loop(self) -> None:
         """AI 연산을 수행하는 백그라운드 스레드.
