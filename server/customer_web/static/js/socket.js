@@ -172,6 +172,28 @@ function updateStatusBar(data) {
 
 const SHOPPING_MODES = ["TRACKING", "TRACKING_CHECKOUT", "WAITING", "GUIDING", "SEARCHING"];
 
+function _clearWaitingTimers() {
+  if (waitingTimerId) {
+    clearInterval(waitingTimerId);
+    waitingTimerId = null;
+  }
+  if (waitingRedirectTimerId) {
+    clearTimeout(waitingRedirectTimerId);
+    waitingRedirectTimerId = null;
+  }
+}
+
+function _hideWaitingCountdown() {
+  const waitingEl = document.getElementById("waiting-countdown");
+  if (waitingEl) waitingEl.style.display = "none";
+}
+
+function _armWaitingDeadline() {
+  // status 샘플링 지연과 무관하게 버튼 클릭 시점 기준으로 카운트를 강제한다.
+  waitingDeadlineMs = Date.now() + waitingTimeoutSec * 1000;
+  waitingTimeoutHandled = false;
+}
+
 function updatePanelVisibility(mode) {
   if (!mode) return;
   const prevMode = currentMode;
@@ -200,20 +222,12 @@ function updatePanelVisibility(mode) {
   // UX 요구사항: 쇼핑 패널에서는 [대기하기]와 [쇼핑 종료]를 항상 함께 노출.
   const showWait = isShoppingMode && !isWaiting;
   const handleResumeFromWaiting = () => {
-    // WAITING 취소 직후 status 반영 지연(1~2Hz) 중 0초 fallback 경합을 막기 위해
+    // WAITING 취소 직후 status 반영 지연(1~2Hz) 중 경합을 막기 위해
     // 카운트다운/redirect 타이머를 즉시 정리한다.
-    if (waitingTimerId) {
-      clearInterval(waitingTimerId);
-      waitingTimerId = null;
-    }
-    if (waitingRedirectTimerId) {
-      clearTimeout(waitingRedirectTimerId);
-      waitingRedirectTimerId = null;
-    }
+    _clearWaitingTimers();
     waitingDeadlineMs = null;
     waitingTimeoutHandled = false;
-    const waitingEl = document.getElementById("waiting-countdown");
-    if (waitingEl) waitingEl.style.display = "none";
+    _hideWaitingCountdown();
 
     // WAITING 중 취소 시 이전 추종 상태로 복귀
     socket.emit("resume_tracking", {});
@@ -230,7 +244,10 @@ function updatePanelVisibility(mode) {
       };
     } else {
       btnWait.innerHTML = "⏸ 대기하기";
-      btnWait.onclick = () => socket.emit("mode", { value: "WAITING" });
+      btnWait.onclick = () => {
+        _armWaitingDeadline();
+        socket.emit("mode", { value: "WAITING" });
+      };
     }
   }
   if (btnFollow) {
@@ -675,17 +692,10 @@ function _syncWaitingCountdown(prevMode, mode) {
   if (!el) return;
 
   if (mode !== "WAITING") {
-    if (waitingTimerId) {
-      clearInterval(waitingTimerId);
-      waitingTimerId = null;
-    }
-    if (waitingRedirectTimerId) {
-      clearTimeout(waitingRedirectTimerId);
-      waitingRedirectTimerId = null;
-    }
+    _clearWaitingTimers();
     waitingTimeoutHandled = false;
     waitingDeadlineMs = null;
-    el.style.display = "none";
+    _hideWaitingCountdown();
     return;
   }
 
@@ -706,11 +716,6 @@ function _syncWaitingCountdown(prevMode, mode) {
 
     if (remainSec === 0 && !waitingTimeoutHandled) {
       waitingTimeoutHandled = true;
-      showToast("세션이 종료되었습니다. 다시 접속해주세요.");
-      // 전이/이벤트가 지연되더라도 사용자 화면을 복구한다.
-      waitingRedirectTimerId = setTimeout(() => {
-        sessionEnd();
-      }, 3000);
     }
   };
 

@@ -180,7 +180,10 @@ class BTRunner:
             if hasattr(self._bt_searching, 'ctx'):
                 self._bt_searching.ctx.start_time = 0.0
                 logger.info('BTRunner: SEARCHING 진입, start_time 초기화됨 (LKP 방향 재로드)')
-
+        # (StateGuard가 게이트 역할)
+        # WAITING 진입 시 BT3를 INVALID로 내려 initialise()를 강제한다.
+        if new_state == 'WAITING':
+            self._bt_waiting.stop(py_trees.common.Status.INVALID)
         # follow_disabled 처리
         if self.follow_disabled and new_state in ('TRACKING', 'TRACKING_CHECKOUT'):
             logger.info('BTRunner: follow_disabled — BT1 skipped for state=%s',
