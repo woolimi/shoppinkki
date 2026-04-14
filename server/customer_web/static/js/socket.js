@@ -196,19 +196,33 @@ function updatePanelVisibility(mode) {
 
   const isGuiding = (mode === "GUIDING" || mode === "SEARCHING");
   const isShoppingMode = SHOPPING_MODES.includes(mode);
+  const isWaiting = (mode === "WAITING");
   // UX 요구사항: 쇼핑 패널에서는 [대기하기]와 [쇼핑 종료]를 항상 함께 노출.
-  const showWait = isShoppingMode;
+  const showWait = isShoppingMode && !isWaiting;
+  const handleResumeFromWaiting = () => {
+    // WAITING 취소 직후 status 반영 지연(1~2Hz) 중 0초 fallback 경합을 막기 위해
+    // 카운트다운/redirect 타이머를 즉시 정리한다.
+    if (waitingTimerId) {
+      clearInterval(waitingTimerId);
+      waitingTimerId = null;
+    }
+    if (waitingRedirectTimerId) {
+      clearTimeout(waitingRedirectTimerId);
+      waitingRedirectTimerId = null;
+    }
+    waitingDeadlineMs = null;
+    waitingTimeoutHandled = false;
+    const waitingEl = document.getElementById("waiting-countdown");
+    if (waitingEl) waitingEl.style.display = "none";
+
+    // WAITING 중 취소 시 이전 추종 상태로 복귀
+    socket.emit("resume_tracking", {});
+  };
 
   if (btnWait) {
     btnWait.style.display = showWait ? "" : "none";
     btnWait.disabled = false;
-    if (mode === "WAITING") {
-      btnWait.innerHTML = "⏸ 대기 중";
-      btnWait.onclick = () => {
-        // 토글 동작: WAITING 중 재클릭하면 이전 추종 상태로 복귀
-        socket.emit("resume_tracking", {});
-      };
-    } else if (isGuiding) {
+    if (isGuiding) {
       btnWait.innerHTML = "⏸ 안내 중단";
       btnWait.onclick = () => {
         socket.emit("resume_tracking", {});
@@ -219,7 +233,12 @@ function updatePanelVisibility(mode) {
       btnWait.onclick = () => socket.emit("mode", { value: "WAITING" });
     }
   }
-  if (btnFollow) btnFollow.style.display = (mode === "WAITING") ? "" : "none";
+  if (btnFollow) {
+    btnFollow.style.display = (mode === "WAITING") ? "" : "none";
+    btnFollow.onclick = (mode === "WAITING")
+      ? handleResumeFromWaiting
+      : () => socket.emit("resume_tracking", {});
+  }
   _syncWaitingCountdown(prevMode, mode);
 }
 
