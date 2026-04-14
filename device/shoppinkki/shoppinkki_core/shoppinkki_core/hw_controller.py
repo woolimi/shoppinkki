@@ -85,8 +85,9 @@ class HWController:
             from pinky_interfaces.srv import SetLamp
             from rclpy.node import Node
 
-            self._led_client = self._node.create_client(SetLed, '/set_led')
-            self._lamp_client = self._node.create_client(SetLamp, '/set_lamp')
+            ns = f'/robot_{self._robot_id}'
+            self._led_client = self._node.create_client(SetLed, f'{ns}/set_led')
+            self._lamp_client = self._node.create_client(SetLamp, f'{ns}/set_lamp')
             logger.info('HWController: service clients created')
         except Exception as e:
             logger.warning('HWController: could not create service clients: %s', e)
@@ -151,7 +152,7 @@ class HWController:
             from pinky_interfaces.srv import SetEmotion
             from rclpy.node import Node
             # SetEmotion is defined in pinky_interfaces; call async
-            client = self._node.create_client(SetEmotion, '/set_emotion')
+            client = self._node.create_client(SetEmotion, f'/robot_{self._robot_id}/set_emotion')
             req = SetEmotion.Request()
             req.emotion = emotion
             client.call_async(req)

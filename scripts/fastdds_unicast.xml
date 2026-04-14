@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--
+  FastDDS 유니캐스트 설정 — WiFi 멀티캐스트 트래픽 제거
+
+  사용법:
+    export FASTRTPS_DEFAULT_PROFILES_FILE=$(pwd)/scripts/fastdds_unicast.xml
+    export ROS_DISCOVERY_SERVER=  (비워야 함 — Simple Discovery 사용)
+
+  각 머신의 IP를 <address> 에 등록해야 합니다.
+  현재 구성: Pi#54(192.168.102.54), Pi#18(192.168.102.18), 서버PC(192.168.102.7)
+-->
+<dds xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <profiles>
+    <participant profile_name="unicast_participant" is_default_profile="true">
+      <rtps>
+        <builtin>
+          <metatrafficUnicastLocatorList>
+            <locator>
+              <udpv4>
+                <address>192.168.102.54</address>
+              </udpv4>
+            </locator>
+            <locator>
+              <udpv4>
+                <address>192.168.102.18</address>
+              </udpv4>
+            </locator>
+            <locator>
+              <udpv4>
+                <address>192.168.102.7</address>
+              </udpv4>
+            </locator>
+          </metatrafficUnicastLocatorList>
+          <initialPeersList>
+            <locator>
+              <udpv4>
+                <address>192.168.102.54</address>
+              </udpv4>
+            </locator>
+            <locator>
+              <udpv4>
+                <address>192.168.102.18</address>
+              </udpv4>
+            </locator>
+            <locator>
+              <udpv4>
+                <address>192.168.102.7</address>
+              </udpv4>
+            </locator>
+          </initialPeersList>
+          <metatrafficMulticastLocatorList/>
+        </builtin>
+      </rtps>
+    </participant>
+  </profiles>
+</dds>
