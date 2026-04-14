@@ -35,6 +35,7 @@ from typing import Callable, Optional, Set
 import py_trees
 import py_trees_ros.trees
 from rclpy.node import Node
+from shoppinkki_interfaces import DollDetectorInterface
 
 from .state_machine import ShoppinkiSM
 
@@ -86,6 +87,7 @@ class BTRunner:
         doll_detector: Optional[DollDetectorInterface] = None,
         is_registration_active: Optional[Callable[[], bool]] = None,
         is_tracking_grace_active: Optional[Callable[[], bool]] = None,
+        has_unpaid_items: Optional[Callable[[], bool]] = None,
     ) -> None:
         self.sm = sm
         self.detector = doll_detector
@@ -93,8 +95,7 @@ class BTRunner:
         self._on_nav_failed = on_nav_failed
         self._is_registration_active = is_registration_active
         self._is_tracking_grace_active = is_tracking_grace_active
-        self._bt_tracking = bt_tracking
-        self._bt_searching = bt_searching
+        self._has_unpaid_items = has_unpaid_items
         self.follow_disabled: bool = False
         self._last_search_fail_time: float = 0.0
         self._SEARCH_COOLDOWN: float = 5.0 # Seconds
@@ -276,6 +277,17 @@ class BTRunner:
         elif state == 'WAITING':
             if status == py_trees.common.Status.FAILURE:
                 logger.info('BTRunner: BT3 WAITING timeout')
+                # WAITING 타임아웃 시 미결제 여부에 따라 LOCKED/RETURNING 분기.
+                unpaid = False
+                if self._has_unpaid_items:
+                    try:
+                        unpaid = bool(self._has_unpaid_items())
+                    except Exception:
+                        logger.exception('BTRunner: has_unpaid_items callback failed')
+                if unpaid:
+                    self.sm.enter_locked()   # LOCKED -> RETURNING(auto)
+                else:
+                    self.sm.enter_returning()
 
     def _get_active_bt(self, state: str):
         """현재 SM 상태에 대응하는 leaf BT를 반환."""

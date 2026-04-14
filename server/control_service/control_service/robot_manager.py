@@ -44,6 +44,7 @@ class RobotState:
     battery: float = 100.0
     is_locked_return: bool = False
     follow_disabled: bool = False
+    waiting_timeout_sec: int = 300
     last_seen: datetime = field(default_factory=datetime.utcnow)
     active_user_id: Optional[str] = None
     bbox: Optional[Dict] = None          # latest detection bbox from AI server
@@ -137,6 +138,9 @@ class RobotManager:
             state.battery = float(payload.get('battery', state.battery))
             state.is_locked_return = bool(payload.get('is_locked_return', False))
             state.follow_disabled = bool(payload.get('follow_disabled', False))
+            state.waiting_timeout_sec = int(
+                payload.get('waiting_timeout_sec', state.waiting_timeout_sec)
+            )
             state.last_seen = datetime.utcnow()
 
         # DB 갱신은 모드 변경 시에만 (위치/배터리는 메모리 캐시로 충분)
@@ -631,6 +635,7 @@ class RobotManager:
             'battery': state.battery,
             'is_locked_return': state.is_locked_return,
             'follow_disabled': state.follow_disabled,
+            'waiting_timeout_sec': state.waiting_timeout_sec,
             'bbox': state.bbox,
         }
         others: List[dict] = []
@@ -658,6 +663,7 @@ class RobotManager:
             'battery': state.battery,
             'is_locked_return': state.is_locked_return,
             'follow_disabled': state.follow_disabled,
+            'waiting_timeout_sec': state.waiting_timeout_sec,
             'bbox': state.bbox,
         }
         self._push_admin(msg)

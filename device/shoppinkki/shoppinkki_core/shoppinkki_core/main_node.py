@@ -19,6 +19,7 @@ import math
 import os
 import threading
 import time
+from urllib import request as urlrequest
 from typing import Optional
 import struct
 import cv2
@@ -42,7 +43,12 @@ except ImportError:
 
 from .bt_runner import BTRunner
 from .cmd_handler import CmdHandler
-from .config import BATTERY_THRESHOLD, CHARGING_COMPLETE_THRESHOLD, CHARGER_ZONE_IDS
+from .config import (
+    BATTERY_THRESHOLD,
+    CHARGING_COMPLETE_THRESHOLD,
+    CHARGER_ZONE_IDS,
+    WAITING_TIMEOUT,
+)
 from shoppinkki_nav.nav2_client import fetch_all_zones
 from .hw_controller import HWController
 from .state_machine import ShoppinkiSM
@@ -85,6 +91,7 @@ class ShoppinkiMainNode(Node):
         # ── Zone cache (control_service REST /zones, 시작 시 1회 fetch) ──
         _cs_host = os.environ.get('CONTROL_SERVICE_HOST', '127.0.0.1')
         _cs_port = int(os.environ.get('CONTROL_SERVICE_PORT', '8081'))
+        self._control_service_base = f'http://{_cs_host}:{_cs_port}'
         self._zones: dict[int, dict] = fetch_all_zones(_cs_host, _cs_port)
 
         # ── State machine ─────────────────────
@@ -208,6 +215,7 @@ class ShoppinkiMainNode(Node):
             doll_detector=self.doll_detector,
             is_registration_active=lambda: self._registration_active,
             is_tracking_grace_active=self._is_tracking_grace_active,
+            has_unpaid_items=self._has_unpaid_items,
         )
         self.bt_runner.setup(node=self)
 
@@ -414,6 +422,7 @@ class ShoppinkiMainNode(Node):
             'battery': self._battery,
             'is_locked_return': self.sm.is_locked_return,
             'follow_disabled': self.follow_disabled,
+            'waiting_timeout_sec': int(WAITING_TIMEOUT),
         })
         msg = String()
         msg.data = payload
@@ -617,7 +626,27 @@ class ShoppinkiMainNode(Node):
         self.get_logger().warning('Navigation failed')
 
     def _has_unpaid_items(self) -> bool:
-        return any(not item.get('is_paid', True) for item in self._cart_items)
+        # 1) Prefer local cart cache if available
+        if any(not item.get('is_paid', True) for item in self._cart_items):
+            return True
+
+        # 2) Fallback to control_service REST for authoritative cart state
+        try:
+            session = self._rest_get_json(f'/session/robot/{ROBOT_ID}')
+            cart_id = int((session or {}).get('cart_id', 0) or 0)
+            if cart_id <= 0:
+                return False
+            result = self._rest_get_json(f'/cart/{cart_id}/has_unpaid')
+            return bool((result or {}).get('has_unpaid', False))
+        except Exception as e:
+            self.get_logger().warning('has_unpaid_items fallback failed: %s', e)
+            return False
+
+    def _rest_get_json(self, path: str) -> dict:
+        url = f'{self._control_service_base}{path}'
+        req = urlrequest.Request(url, method='GET')
+        with urlrequest.urlopen(req, timeout=1.5) as resp:
+            return json.loads(resp.read().decode('utf-8'))
 
     # ──────────────────────────────────────────
     # 카메라 루프 (별도 스레드)

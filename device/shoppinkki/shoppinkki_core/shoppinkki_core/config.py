@@ -20,7 +20,7 @@ MIN_DIST: float = 0.25        # min obstacle distance before stopping (m)
 # ── State machine timeouts ────────────────────
 N_MISS_FRAMES: int = 16       # tolerate brief close-range occlusions before SEARCHING
 SEARCH_TIMEOUT: float = 30.0  # SEARCHING → WAITING timeout (s)
-WAITING_TIMEOUT: int = 300    # WAITING  → RETURNING timeout (s)
+WAITING_TIMEOUT: int = 5      # WAITING timeout for test (restore to 300 for production)
 
 # ── Battery ───────────────────────────────────
 BATTERY_THRESHOLD: int = 20          # battery % below which HALTED triggers

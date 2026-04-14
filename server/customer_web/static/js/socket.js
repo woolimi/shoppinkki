@@ -27,10 +27,11 @@ const socket = io();
 let currentMode = "IDLE";
 // 추종 비활성화 여부
 let followDisabled = false;
-// WAITING 카운트다운(프론트 임시 기준: 300초)
-const WAITING_TIMEOUT_SEC = 300;
+// WAITING 카운트다운(기본값; status.waiting_timeout_sec로 덮어씀)
+const DEFAULT_WAITING_TIMEOUT_SEC = 300;
 let waitingDeadlineMs = null;
 let waitingTimerId = null;
+let waitingTimeoutSec = DEFAULT_WAITING_TIMEOUT_SEC;
 // 도착한 구역명 캐시
 let arrivedZoneName = "";
 
@@ -63,6 +64,12 @@ function _isMyRobot(data) {
 socket.on("status", (data) => {
   if (!_isMyRobot(data)) return;
   updateStatusBar(data);
+  const timeoutFromStatus = Number(
+    data.my_robot?.waiting_timeout_sec ?? data.waiting_timeout_sec
+  );
+  if (Number.isFinite(timeoutFromStatus) && timeoutFromStatus > 0) {
+    waitingTimeoutSec = Math.floor(timeoutFromStatus);
+  }
   // follow_disabled 값을 먼저 반영한 뒤 버튼 가시성을 계산해야
   // 상태 업데이트 타이밍에 따른 버튼 깜빡임/오판정이 줄어든다.
   updateFollowDisabledBanner(data.my_robot?.follow_disabled ?? data.follow_disabled);
@@ -650,7 +657,7 @@ function _syncWaitingCountdown(prevMode, mode) {
 
   // WAITING으로 새로 진입한 시점에만 5분 타이머를 시작한다.
   if (prevMode !== "WAITING" || waitingDeadlineMs === null) {
-    waitingDeadlineMs = Date.now() + WAITING_TIMEOUT_SEC * 1000;
+    waitingDeadlineMs = Date.now() + waitingTimeoutSec * 1000;
   }
 
   const render = () => {
