@@ -154,7 +154,7 @@ class TestSessionCart:
         db.mark_items_paid(cid)
         assert db.has_unpaid_items(cid) is False
 
-        # Delete item
+        
         db.delete_cart_item(item_id)
         assert db.get_cart_items(cid) == []
 
