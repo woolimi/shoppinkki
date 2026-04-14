@@ -265,8 +265,6 @@ function showTrackingPanel() {
 
 function updateFollowDisabledBanner(disabled) {
   followDisabled = !!disabled;
-  const banner = document.getElementById("follow-disabled-banner");
-  if (banner) banner.style.display = followDisabled ? "" : "none";
 }
 
 // ── 결제 팝업 ──────────────────────────────────────────────────
@@ -725,9 +723,6 @@ function _syncWaitingCountdown(prevMode, mode) {
 }
 
 function _modeLabel(mode) {
-  if (followDisabled && (mode === "TRACKING" || mode === "TRACKING_CHECKOUT")) {
-    return mode === "TRACKING_CHECKOUT" ? "시뮬레이션 (결제완료)" : "시뮬레이션 모드";
-  }
   const labels = {
     IDLE:               "등록 대기",
     TRACKING:           "추종 중",
