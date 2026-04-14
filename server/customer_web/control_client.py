@@ -120,6 +120,7 @@ class ControlClient:
             "status", "cart", "registration_done", "checkout_zone_enter",
             "payment_done", "checkout_blocked", "find_product_result",
             "arrived", "nav_failed", "enter_locked", "enter_halted", "staff_resolved",
+            "session_ended",
             "doll_detected",
         }
         if msg_type in known:

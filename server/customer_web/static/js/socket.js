@@ -32,6 +32,8 @@ const DEFAULT_WAITING_TIMEOUT_SEC = 300;
 let waitingDeadlineMs = null;
 let waitingTimerId = null;
 let waitingTimeoutSec = DEFAULT_WAITING_TIMEOUT_SEC;
+let waitingTimeoutHandled = false;
+let waitingRedirectTimerId = null;
 // 도착한 구역명 캐시
 let arrivedZoneName = "";
 
@@ -137,6 +139,12 @@ socket.on("enter_halted", () => {
 
 // 직원 처리 완료 → 세션 종료
 socket.on("staff_resolved", () => {
+  sessionEnd();
+});
+
+// RETURNING(빈 카트) 자동 종료 등 서버 주도 세션 종료
+socket.on("session_ended", (data) => {
+  if (!_isMyRobot(data || {})) return;
   sessionEnd();
 });
 
@@ -650,6 +658,11 @@ function _syncWaitingCountdown(prevMode, mode) {
       clearInterval(waitingTimerId);
       waitingTimerId = null;
     }
+    if (waitingRedirectTimerId) {
+      clearTimeout(waitingRedirectTimerId);
+      waitingRedirectTimerId = null;
+    }
+    waitingTimeoutHandled = false;
     waitingDeadlineMs = null;
     el.style.display = "none";
     return;
@@ -658,6 +671,7 @@ function _syncWaitingCountdown(prevMode, mode) {
   // WAITING으로 새로 진입한 시점에만 5분 타이머를 시작한다.
   if (prevMode !== "WAITING" || waitingDeadlineMs === null) {
     waitingDeadlineMs = Date.now() + waitingTimeoutSec * 1000;
+    waitingTimeoutHandled = false;
   }
 
   const render = () => {
@@ -668,6 +682,15 @@ function _syncWaitingCountdown(prevMode, mode) {
     const ss = String(remainSec % 60).padStart(2, "0");
     el.textContent = `자동 복귀까지 ${mm}:${ss}`;
     el.style.display = "";
+
+    if (remainSec === 0 && !waitingTimeoutHandled) {
+      waitingTimeoutHandled = true;
+      showToast("세션이 종료되었습니다. 다시 접속해주세요.");
+      // 전이/이벤트가 지연되더라도 사용자 화면을 복구한다.
+      waitingRedirectTimerId = setTimeout(() => {
+        sessionEnd();
+      }, 3000);
+    }
   };
 
   render();

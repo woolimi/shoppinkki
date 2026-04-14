@@ -19,6 +19,7 @@ import math
 import os
 import threading
 import time
+from urllib.error import HTTPError, URLError
 from urllib import request as urlrequest
 from typing import Optional
 import struct
@@ -638,15 +639,25 @@ class ShoppinkiMainNode(Node):
                 return False
             result = self._rest_get_json(f'/cart/{cart_id}/has_unpaid')
             return bool((result or {}).get('has_unpaid', False))
-        except Exception as e:
+        except (HTTPError, URLError, TimeoutError) as e:
+            # 조회 실패 시 LOCKED 오탐을 피하기 위해 RETURNING 경로를 우선한다.
             self.get_logger().warning('has_unpaid_items fallback failed: %s', e)
+            return False
+        except Exception as e:
+            self.get_logger().warning('has_unpaid_items unexpected error: %s', e)
             return False
 
     def _rest_get_json(self, path: str) -> dict:
         url = f'{self._control_service_base}{path}'
         req = urlrequest.Request(url, method='GET')
-        with urlrequest.urlopen(req, timeout=1.5) as resp:
-            return json.loads(resp.read().decode('utf-8'))
+        try:
+            with urlrequest.urlopen(req, timeout=1.5) as resp:
+                return json.loads(resp.read().decode('utf-8'))
+        except HTTPError as e:
+            # 404는 "활성 세션/카트 없음"으로 간주한다.
+            if e.code == 404:
+                return {}
+            raise
 
     # ──────────────────────────────────────────
     # 카메라 루프 (별도 스레드)

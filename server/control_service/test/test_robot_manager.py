@@ -235,3 +235,40 @@ class TestWebReturn:
             rm.handle_web_cmd('54', {'cmd': 'return', 'robot_id': '54'})
 
             rm.publish_cmd.assert_not_called()
+
+
+class TestReturningSessionCleanup:
+    def test_returning_without_unpaid_auto_ends_session(self):
+        web_msgs = []
+        with patch('control_service.robot_manager.db') as mock_db:
+            mock_db.get_all_robots.return_value = [
+                {'robot_id': '54', 'current_mode': 'WAITING', 'pos_x': 0.0,
+                 'pos_y': 0.0, 'battery_level': 100, 'is_locked_return': 0,
+                 'active_user_id': 'test01'},
+            ]
+            mock_db.update_robot.return_value = None
+            mock_db.log_event.return_value = None
+            mock_db.log_staff_call.return_value = 1
+            mock_db.get_active_session_by_robot.return_value = {
+                'session_id': 11,
+                'user_id': 'test01',
+            }
+            mock_db.get_cart_by_session.return_value = {'cart_id': 22}
+            mock_db.has_unpaid_items.return_value = False
+
+            rm = RobotManager()
+            rm.start()
+            rm.push_to_web = lambda rid, msg: web_msgs.append((rid, msg))
+
+            rm.on_status('54', {
+                'mode': 'RETURNING', 'pos_x': 0.0, 'pos_y': 0.0,
+                'battery': 100.0, 'is_locked_return': False,
+            })
+
+            mock_db.end_session.assert_called_once_with(11)
+            mock_db.update_robot.assert_any_call('54', current_mode='RETURNING')
+            mock_db.update_robot.assert_any_call('54', active_user_id=None)
+            assert any(
+                rid == '54' and msg.get('type') == 'session_ended'
+                for rid, msg in web_msgs
+            )

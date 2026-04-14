@@ -149,6 +149,8 @@ class RobotManager:
                 robot_id,
                 current_mode=state.mode,
             )
+            if state.mode == 'RETURNING':
+                self._end_session_if_no_unpaid_on_returning(robot_id)
 
         # Push status update to admin and web
         self._push_status(robot_id, state)
@@ -211,6 +213,32 @@ class RobotManager:
                 'robot_id': robot_id,
             })
             logger.info('checkout_zone_enter → web robot=%s', robot_id)
+
+    def _end_session_if_no_unpaid_on_returning(self, robot_id: str) -> None:
+        """Auto-end session on RETURNING when there are no unpaid items."""
+        try:
+            session = db.get_active_session_by_robot(robot_id)
+            if not session:
+                return
+            cart = db.get_cart_by_session(session['session_id'])
+            has_unpaid = bool(cart and db.has_unpaid_items(cart['cart_id']))
+            if has_unpaid:
+                logger.info('RETURNING with unpaid items: keep session (robot=%s)', robot_id)
+                return
+
+            db.end_session(session['session_id'])
+            db.update_robot(robot_id, active_user_id=None)
+            db.log_event(
+                robot_id,
+                'SESSION_END',
+                session.get('user_id'),
+                detail='auto_end_on_returning_empty_cart',
+            )
+            self.set_cached_active_user_id(robot_id, None)
+            self._push_web(robot_id, {'type': 'session_ended', 'robot_id': robot_id})
+            logger.info('Auto session end on RETURNING (robot=%s)', robot_id)
+        except Exception:
+            logger.exception('Auto session end failed on RETURNING (robot=%s)', robot_id)
 
     # ──────────────────────────────────────────
     # Commands from Admin (channel B, via tcp_server)
