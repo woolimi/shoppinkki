@@ -2,6 +2,16 @@
 
 All tuneable parameters are centralised here.
 Edit this file to change robot behaviour without touching logic code.
+
+WAITING timeout (single source of truth)
+----------------------------------------
+``WAITING_TIMEOUT`` (seconds) drives:
+  - BT3 ``WaitAndAvoid`` timeout (via ``shoppinkki_nav.bt_waiting`` import),
+  - ``/robot_<id>/status`` JSON field ``waiting_timeout_sec``,
+  - ``control_service`` RobotState default until the first status arrives,
+  - ``customer_web`` initial countdown default (injected into ``main.html``).
+
+Change **only** ``WAITING_TIMEOUT`` here to retune everywhere that reads it.
 """
 
 # ── P-Control (tracking) ──────────────────────

@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional
 
 from . import db
-from shoppinkki_core.config import ROBOT_TIMEOUT_SEC
+from shoppinkki_core.config import ROBOT_TIMEOUT_SEC, WAITING_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ class RobotState:
     battery: float = 100.0
     is_locked_return: bool = False
     follow_disabled: bool = False
-    waiting_timeout_sec: int = 300
+    waiting_timeout_sec: int = WAITING_TIMEOUT
     last_seen: datetime = field(default_factory=datetime.utcnow)
     active_user_id: Optional[str] = None
     bbox: Optional[Dict] = None          # latest detection bbox from AI server

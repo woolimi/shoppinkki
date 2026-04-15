@@ -38,6 +38,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# WAITING 카운트다운/BT3 — ``shoppinkki_core.config.WAITING_TIMEOUT`` 과 동일 소스
+try:
+    from shoppinkki_core.config import WAITING_TIMEOUT as _WAITING_TIMEOUT_SEC
+except ImportError:  # customer_web 단독 실행 시 (테스트 등)
+    _WAITING_TIMEOUT_SEC = 300
+    logger.warning(
+        "shoppinkki_core.config 미가능: waiting_timeout 기본 %ss (워크스페이스 소스 권장)",
+        _WAITING_TIMEOUT_SEC,
+    )
+
 # ── 환경 변수 ──────────────────────────────────────────────────
 PORT = int(os.environ.get("PORT", 8501))
 KNOWN_ROBOT_IDS: list[str] = [
@@ -80,6 +90,13 @@ except Exception as _e:
 # ── Flask 앱 ───────────────────────────────────────────────────
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+
+
+@app.context_processor
+def _inject_shop_constants():
+    """템플릿/static 초기값 — WAITING_TIMEOUT 단일 소스(shoppinkki_core.config)."""
+    return {"waiting_timeout_sec": int(_WAITING_TIMEOUT_SEC)}
+
 
 # ── 맵 PNG 서빙 (shoppinkki_nav/maps/ 단일 원본) ──────────────
 _MAP_PNG = os.path.normpath(os.path.join(
