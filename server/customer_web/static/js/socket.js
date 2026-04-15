@@ -40,7 +40,11 @@ let waitingTimerId = null;
 let waitingTimeoutSec = DEFAULT_WAITING_TIMEOUT_SEC;
 let waitingTimeoutHandled = false;
 let waitingRedirectTimerId = null;
-/** After UI hits 00:00, emit RETURNING if still WAITING (delay ms; BT usually wins first). */
+/**
+ * WAITING 종료 트리거 2차(보험): UI 카운트다운 00:00 후에도 모드가 WAITING이면
+ * `mode: RETURNING` 전송. 1차: 로봇 BT3 타임아웃 → BTRunner → SM 전이.
+ * 지연은 BT와의 레이스 완화(보통 BT가 먼저 전이).
+ */
 const WAITING_RETURNING_FALLBACK_MS = 2500;
 // 도착한 구역명 캐시
 let arrivedZoneName = "";
@@ -726,6 +730,7 @@ function _syncWaitingCountdown(prevMode, mode) {
         clearTimeout(waitingRedirectTimerId);
         waitingRedirectTimerId = null;
       }
+      // BT3가 먼저 전이했으면 currentMode는 이미 변경 → WAITING일 때만 전송.
       waitingRedirectTimerId = setTimeout(() => {
         waitingRedirectTimerId = null;
         if (currentMode === "WAITING") {

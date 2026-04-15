@@ -641,6 +641,12 @@ class ShoppinkiMainNode(Node):
         self.get_logger().warning('Navigation failed')
 
     def _has_unpaid_items(self) -> bool:
+        """True if cart has unpaid lines (local cache, else control_service REST).
+
+        On REST/network errors, returns False so WAITING exit uses RETURNING
+        (via ``waiting_exit_by_unpaid``), not LOCKED — avoids false LOCKED when
+        the server cannot be reached. Matches BTRunner: callback exception → unpaid False.
+        """
         # 1) Prefer local cart cache if available
         if any(not item.get('is_paid', True) for item in self._cart_items):
             return True

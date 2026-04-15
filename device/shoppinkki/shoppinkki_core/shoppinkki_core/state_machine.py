@@ -228,6 +228,7 @@ class ShoppinkiSM:
         """Leave WAITING: unpaid cart -> LOCKED, else -> RETURNING.
 
         Used by BTRunner (BT3 timeout) and CmdHandler (mode RETURNING while WAITING).
+        Callers treat REST/callback failures as ``has_unpaid=False`` (prefer RETURNING).
         """
         if self.state != 'WAITING':
             logger.warning(

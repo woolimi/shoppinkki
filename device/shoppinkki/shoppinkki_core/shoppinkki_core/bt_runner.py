@@ -286,6 +286,7 @@ class BTRunner:
                     try:
                         unpaid = bool(self._has_unpaid_items())
                     except Exception:
+                        # Same policy as main_node._has_unpaid_items: unknown → not unpaid → RETURNING.
                         logger.exception('BTRunner: has_unpaid_items callback failed')
                 self.sm.waiting_exit_by_unpaid(unpaid)
 
