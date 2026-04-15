@@ -619,19 +619,23 @@ class RobotManager:
         while self._running:
             time.sleep(10)
             threshold = datetime.utcnow() - timedelta(seconds=ROBOT_TIMEOUT_SEC)
+            offline: list[tuple[str, 'RobotState']] = []
             with self._lock:
                 for robot_id, state in self._states.items():
                     if state.last_seen < threshold and state.mode != 'OFFLINE':
-                        logger.info('Robot %s → OFFLINE (timeout)', robot_id)
                         state.mode = 'OFFLINE'
                         state.active_user_id = None
-                        db.update_robot(
-                            robot_id,
-                            current_mode='OFFLINE',
-                            active_user_id=None,
-                        )
-                        db.log_event(robot_id, 'OFFLINE')
-                        self._push_status(robot_id, state)
+                        offline.append((robot_id, state))
+            # DB / TCP push outside lock to avoid blocking Flask threads
+            for robot_id, state in offline:
+                logger.info('Robot %s → OFFLINE (timeout)', robot_id)
+                db.update_robot(
+                    robot_id,
+                    current_mode='OFFLINE',
+                    active_user_id=None,
+                )
+                db.log_event(robot_id, 'OFFLINE')
+                self._push_status(robot_id, state)
 
     # ──────────────────────────────────────────
     # Internal helpers
