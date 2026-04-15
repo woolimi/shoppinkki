@@ -59,17 +59,25 @@ ROBOT_REAR  = 0.08   # 뒤
 ROBOT_HALF_W = 0.055 # 좌우 반폭
 BLINK_INTERVAL_MS = 500
 
+# 맵 스타일링 색상
+MAP_FLOOR_COLOR = QColor('#E0E4E8')      # 가독성 높은 라이트 그레이 바닥
+MAP_WALL_COLOR = QColor('#2C3E50')       # 더 짙은 미드나잇 블루 벽
+MAP_SHELF_COLOR = QColor('#3D5A80')      # 조금 더 밝고 푸른빛이 도는 선반 내부
+MAP_UNKNOWN_COLOR = QColor('#CED4DA')    # 미확인 영역 (외부)
+MAP_SUBTLE_COLOR = QColor('#BDC3C7')     # 보조선 (결제구역 등)
+MAP_BG_COLOR = QColor('#FFFFFF')         # 맵 외부 배경 (순백색)
+
 ROBOT_COLORS = [
+    QColor('#f1c40f'),   # yellow (Sun Flower)
+    QColor('#9b59b6'),   # purple (Amethyst)
     QColor('#27ae60'),   # green
     QColor('#2980b9'),   # blue
-    QColor('#8e44ad'),   # purple
+    QColor('#8e44ad'),   # dark purple
     QColor('#e67e22'),   # orange
     QColor('#16a085'),   # teal
     QColor('#c0392b'),   # red
     QColor('#d35400'),   # dark orange
     QColor('#2c3e50'),   # dark navy
-    QColor('#f39c12'),   # yellow
-    QColor('#1abc9c'),   # emerald
 ]
 
 
@@ -129,26 +137,29 @@ def _load_map_meta() -> dict[str, Any]:
 # PNG 탐색
 # ────────────────────────────────────────────────────
 def _find_map_png() -> str | None:
-    """shop.png 경로를 찾는다 (shoppinkki_nav/maps/ 단일 원본)."""
+    """shop_styled.png(UI 표시용)을 우선 탐색, 없으면 shop.png fallback."""
+    # 탐색 순서: styled → original, 설치 경로 → 소스 트리
+    names = ['shop_styled.png', 'shop.png']
     candidates: list[str] = []
 
-    try:
-        from ament_index_python.packages import get_package_share_directory
+    for name in names:
+        try:
+            from ament_index_python.packages import get_package_share_directory
+            candidates.append(
+                os.path.join(
+                    get_package_share_directory('shoppinkki_nav'),
+                    'maps', name,
+                )
+            )
+        except Exception:
+            pass
+
         candidates.append(
             os.path.join(
-                get_package_share_directory('shoppinkki_nav'),
-                'maps', 'shop.png',
+                os.path.dirname(__file__), '..', '..', '..', '..',
+                'device', 'shoppinkki', 'shoppinkki_nav', 'maps', name,
             )
         )
-    except Exception:
-        pass
-
-    candidates.append(
-        os.path.join(
-            os.path.dirname(__file__), '..', '..', '..', '..',
-            'device', 'shoppinkki', 'shoppinkki_nav', 'maps', 'shop.png',
-        )
-    )
 
     for path in candidates:
         if os.path.isfile(path):
@@ -247,6 +258,9 @@ class MapWidget(QLabel):
         if self._scale < 1:
             self._scale = 1
 
+        # 스타일 적용 (색상 치환)
+        pix = self._stylize_pixmap(pix)
+
         # 270° CW 회전 + 상하 반전
         rotated = pix.transformed(QTransform().rotate(270).scale(1, -1))
         self._base_pixmap = rotated
@@ -254,6 +268,51 @@ class MapWidget(QLabel):
         self.setMinimumSize(rotated.width(), rotated.height())
         self.resize(rotated.width() * MAP_DISPLAY_SCALE,
                     rotated.height() * MAP_DISPLAY_SCALE)
+
+    def _stylize_pixmap(self, pix: QPixmap) -> QPixmap:
+        """원본 점유 격자 맵을 세련된 색상으로 변환."""
+        img = pix.toImage()
+        w, h = img.width(), img.height()
+
+        for y in range(h):
+            for x in range(w):
+                c = img.pixelColor(x, y)
+                gray = c.lightness()
+                if gray > 200:       # 빈 공간 → 깨끗한 화이트
+                    img.setPixelColor(x, y, MAP_FLOOR_COLOR)
+                elif gray < 10:      # 벽 → 짙은 블루그레이
+                    img.setPixelColor(x, y, MAP_WALL_COLOR)
+                elif 90 <= gray <= 110:   # 선반 내부 (값 100)
+                    img.setPixelColor(x, y, MAP_SHELF_COLOR)
+                elif 160 <= gray <= 180:  # 보조선 (값 170)
+                    img.setPixelColor(x, y, MAP_SUBTLE_COLOR)
+                else:                # 미확인 영역
+                    img.setPixelColor(x, y, MAP_UNKNOWN_COLOR)
+
+        return QPixmap.fromImage(img)
+
+    def _draw_grid(self, p: QPainter):
+        """바닥 위에 미세한 격자선을 그린다."""
+        if self._base_pixmap is None:
+            return
+        d = self._display_scale
+        ox, oy = self._map_offset
+        draw_w = int(self._base_pixmap.width() * d)
+        draw_h = int(self._base_pixmap.height() * d)
+
+        grid_step_px = 0.1 / self._resolution * self._scale * d
+        if grid_step_px < 4:
+            return
+
+        p.setPen(QPen(MAP_GRID_COLOR, 0.5))
+        x = float(ox)
+        while x <= ox + draw_w:
+            p.drawLine(int(x), oy, int(x), oy + draw_h)
+            x += grid_step_px
+        y = float(oy)
+        while y <= oy + draw_h:
+            p.drawLine(ox, int(y), ox + draw_w, int(y))
+            y += grid_step_px
 
     # ── 좌표 변환 ───────────────────────────────────
     #
@@ -386,6 +445,13 @@ class MapWidget(QLabel):
     # ── 렌더링 ──────────────────────────────────────
 
     def _get_color(self, robot_id: str) -> QColor:
+        # 54번: 청록색, 18번: 보라색 고정
+        rid_str = str(robot_id)
+        if rid_str == '54':
+            return QColor('#16A085')
+        if rid_str == '18':
+            return QColor('#9B59B6')
+
         if robot_id not in self._robot_color_map:
             self._robot_color_map[robot_id] = ROBOT_COLORS[
                 self._color_idx % len(ROBOT_COLORS)
@@ -394,7 +460,7 @@ class MapWidget(QLabel):
         return self._robot_color_map[robot_id]
 
     def _draw_fleet_graph(self, p: QPainter):
-        """Fleet nav graph 렌더링: 레인(선) + 웨이포인트(마커+이름)."""
+        """Fleet nav graph 렌더링 — 미니멀하고 깔끔한 스타일."""
         if not self._fleet_waypoints:
             return
 
@@ -404,17 +470,16 @@ class MapWidget(QLabel):
             px, py = self._world_to_pixel(w['x'], w['y'])
             wp_px[w['idx']] = (px, py)
 
-        # 레인 (얇은 회색 선)
-        p.setPen(QPen(QColor(150, 150, 150, 100), 1))
+        # 레인 (조금 더 선명한 점선)
+        p.setPen(QPen(QColor(100, 120, 140, 130), 0.7, Qt.PenStyle.DotLine))
         for lane in self._fleet_lanes:
             f = wp_px.get(lane['from'])
             t = wp_px.get(lane['to'])
             if f and t:
                 p.drawLine(f[0], f[1], t[0], t[1])
 
-        # 웨이포인트 마커
-        font = QFont()
-        font.setPointSize(11)
+        # 레이블 폰트 (작지만 또렷하게)
+        font = QFont('Segoe UI', 8)
         font.setBold(True)
         p.setFont(font)
         fm = p.fontMetrics()
@@ -423,72 +488,67 @@ class MapWidget(QLabel):
 
         for w in self._fleet_waypoints:
             px, py = wp_px[w['idx']]
-            r = 6  # 마커 반지름 (px)
-            has_zone = w.get('zone_id') is not None
+            r = 4  # 마커 반지름 — 작게
 
-            # 색상: pickup_zone=파랑, charger=초록, holding=주황, 통로=회색
+            # 색상 (채도를 낮추고 투명도 조절)
             if w.get('pickup_zone'):
-                fill = QColor(52, 152, 219, 180)
-                border = QColor(41, 128, 185)
+                fill = QColor(100, 160, 220, 160)
+                border = QColor(70, 130, 190)
             elif w.get('is_charger'):
-                fill = QColor(46, 204, 113, 180)
-                border = QColor(39, 174, 96)
+                fill = QColor(80, 190, 130, 160)
+                border = QColor(60, 160, 110)
             elif w.get('holding_point'):
-                fill = QColor(230, 126, 34, 180)
-                border = QColor(211, 84, 0)
+                fill = QColor(220, 150, 70, 160)
+                border = QColor(190, 120, 50)
             else:
-                fill = QColor(149, 165, 166, 140)
-                border = QColor(127, 140, 141)
+                fill = QColor(170, 175, 180, 100)
+                border = QColor(140, 145, 150)
 
+            # 마커 (작은 원)
             p.setBrush(fill)
-            p.setPen(QPen(border, 1.5))
+            p.setPen(QPen(border, 1))
             p.drawEllipse(px - r, py - r, r * 2, r * 2)
 
-            # 방향 화살표 (pickup_zone인 경우 항상 표시)
-            theta = w.get('theta', 0)
-            if w.get('pickup_zone') or w.get('is_charger') or abs(theta) > 0.01:
-                screen_angle = -(theta - math.pi / 2)
-                arrow_len = r * 2.5
-                ax = px + arrow_len * math.cos(screen_angle)
-                ay = py + arrow_len * math.sin(screen_angle)
-                p.setPen(QPen(border.darker(120), 2))
-                p.drawLine(px, py, int(ax), int(ay))
-                # 화살촉
-                hs = 5
-                p.setBrush(border.darker(120))
-                p.setPen(Qt.PenStyle.NoPen)
-                p.drawPolygon(QPolygonF([
-                    QPointF(ax, ay),
-                    QPointF(ax - hs * math.cos(screen_angle - 0.5),
-                            ay - hs * math.sin(screen_angle - 0.5)),
-                    QPointF(ax - hs * math.cos(screen_angle + 0.5),
-                            ay - hs * math.sin(screen_angle + 0.5)),
-                ]))
-
-            # 이름 레이블 (겹침 감지 → 위/아래 자동 배치)
+            # 이름 레이블 — 컴팩트, 겹침 회피
             name = w['name']
             tw = fm.horizontalAdvance(name)
             th = fm.height()
+            pad_x, pad_y = 3, 1
             tx = px - tw // 2
-            # 기본: 아래
-            ty = py + r + 3
-            label_rect = (tx - 2, ty - 1, tw + 4, th + 2)
-            # 기존 라벨과 겹치면 위로 배치
+            # 스마트 배치: 특정 키워드(결제, 로비, 선반류)는 무조건 위로
+            force_above_kws = ['결제', '로비', '과자', '해산물', '육류', '채소']
+            force_below = ['입구1', '입구2', 'P1', 'P2', '하단_복도', '출구2', '출구1', '결제구역1_입구']
+            
+            should_be_above = any(kw in name for kw in force_above_kws)
+            is_bottom_area = py > self.height() * 0.7
+            
+            if (is_bottom_area or should_be_above) and (name not in force_below):
+                ty = py - r - th - 8 # 위로
+            else:
+                ty = py + r + 8      # 아래로
+                
+            label_rect = (tx - pad_x, ty - pad_y, tw + pad_x * 2, th + pad_y * 2)
+            
+            # 겹침 방지: 위 배치 우선순위 지점은 가급적 아래로 밀려나지 않게 함
             for prev in label_rects:
                 if (label_rect[0] < prev[0] + prev[2] and
                     label_rect[0] + label_rect[2] > prev[0] and
                     label_rect[1] < prev[1] + prev[3] and
                     label_rect[1] + label_rect[3] > prev[1]):
-                    ty = py - r - th - 3
-                    label_rect = (tx - 2, ty - 1, tw + 4, th + 2)
+                    # 겹칠 경우, 강제 위 배치 지점이 아닌 경우에만 스왑 시도
+                    if not should_be_above:
+                        if ty < py: ty = py + r + 6
+                        else:       ty = py - r - th - 6
+                        label_rect = (tx - pad_x, ty - pad_y, tw + pad_x * 2, th + pad_y * 2)
                     break
             label_rects.append(label_rect)
 
-            p.setBrush(QColor(0, 0, 0, 140))
+            # 반투명 배경 (더 진하게)
+            p.setBrush(QColor(25, 30, 40, 210))
             p.setPen(Qt.PenStyle.NoPen)
             p.drawRoundedRect(label_rect[0], label_rect[1],
-                              label_rect[2], label_rect[3], 3, 3)
-            p.setPen(QColor('#ffffff'))
+                              label_rect[2], label_rect[3], 4, 4)
+            p.setPen(QColor(240, 242, 245))
             p.drawText(tx, ty + fm.ascent(), name)
 
     def _draw_robot(self, p: QPainter, robot_id: str, state: dict):
@@ -584,20 +644,40 @@ class MapWidget(QLabel):
                 p.drawPolygon(poly)
 
         # ID 레이블 (배경 박스 + 텍스트)
-        font = QFont()
-        font.setPointSize(9)
+        font = QFont('Segoe UI', 8)
         font.setBold(True)
         p.setFont(font)
         fm = p.fontMetrics()
         tw = fm.horizontalAdvance(robot_id)
         th = fm.height()
         tx = cx - tw // 2
-        ty = cy - r - th - 2
-        p.setBrush(QColor(0, 0, 0, 160))
+        ty = cy - r - th - 5
+        # 로봇 색상 배경 + 둥근 모서리 (더 진하게)
+        bg = QColor(color.red(), color.green(), color.blue(), 230)
+        p.setBrush(bg)
         p.setPen(Qt.PenStyle.NoPen)
-        p.drawRoundedRect(tx - 3, ty - 1, tw + 6, th + 2, 3, 3)
+        p.drawRoundedRect(tx - 3, ty - 1, tw + 6, th + 2, 4, 4)
         p.setPen(QColor('#ffffff'))
         p.drawText(tx, ty + fm.ascent(), robot_id)
+
+    def _draw_path(self, p: QPainter, robot_id: str, state: dict):
+        """로봇의 전체 계획 경로를 지도 위에 점선(DashLine)으로 렌더링."""
+        path = state.get('path', [])
+        if not path or len(path) < 2:
+            return
+
+        color = self._get_color(robot_id)
+        # 본체 색상을 사용하되 적당한 투명도와 점선 스타일 적용
+        pen_color = QColor(color.red(), color.green(), color.blue(), 130)
+        p.setPen(QPen(pen_color, 2.5, Qt.PenStyle.DashLine))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+
+        poly = QPolygonF()
+        for pt in path:
+            px, py = self._world_to_pixel(pt['x'], pt['y'])
+            poly.append(QPointF(px, py))
+
+        p.drawPolyline(poly)
 
     def _draw_goto_marker(self, p: QPainter):
         if self._goto_marker is None:
@@ -648,6 +728,9 @@ class MapWidget(QLabel):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
 
+        # 맵 외부 배경
+        p.fillRect(self.rect(), MAP_BG_COLOR)
+
         if self._base_pixmap is not None:
             d = self._display_scale
             ox, oy = self._map_offset
@@ -655,9 +738,12 @@ class MapWidget(QLabel):
             draw_h = int(self._base_pixmap.height() * d)
             from PyQt6.QtCore import QRect
             p.drawPixmap(QRect(ox, oy, draw_w, draw_h), self._base_pixmap)
+            # 미세 테두리
+            p.setPen(QPen(QColor(255, 255, 255, 30), 1))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawRect(QRect(ox, oy, draw_w, draw_h))
         else:
-            p.fillRect(self.rect(), QColor('#555555'))
-            p.setPen(QColor('#ffffff'))
+            p.setPen(QColor('#888888'))
             font = QFont()
             font.setPointSize(14)
             p.setFont(font)
@@ -666,6 +752,7 @@ class MapWidget(QLabel):
         self._draw_fleet_graph(p)
 
         for rid, st in self._robot_states.items():
+            self._draw_path(p, rid, st)  # 경로를 아이콘 아래에 배경으로 그림
             self._draw_robot(p, rid, st)
 
         self._draw_goto_marker(p)

@@ -57,7 +57,11 @@ class ControlServiceNode:
         self._SetEntityPose = None
 
         from geometry_msgs.msg import PoseWithCovarianceStamped
-
+        try:
+            from rmf_fleet_msgs.msg import FleetState
+        except ImportError:
+            FleetState = None
+        
         class _Node(Node):
             def __init__(inner_self):
                 super().__init__('control_service_node')
@@ -85,6 +89,10 @@ class ControlServiceNode:
                     # Publish initialpose
                     self._init_pose_publishers[rid] = inner_self.create_publisher(
                         PoseWithCovarianceStamped, f'/robot_{rid}/initialpose', 10)
+                # RMF Path Monitoring
+                if FleetState:
+                    inner_self.create_subscription(
+                        FleetState, '/fleet_states', self._on_fleet_states, 10)
                 inner_self.get_logger().info('ControlServiceNode ready')
 
         self._init_pose_publishers: dict = {}
@@ -287,3 +295,15 @@ class ControlServiceNode:
             self._rm.on_customer_event(robot_id, json.loads(raw))
         except Exception as e:
             logger.error('on_customer_event error: %s', e)
+
+    def _on_fleet_states(self, msg) -> None:
+        """RMF /fleet_states에서 로봇별 전체 예상 경로 추출."""
+        for rs in msg.robots:
+            # pinky_54 -> 54
+            name = rs.name
+            if name.startswith('pinky_'):
+                rid = name.replace('pinky_', '')
+                path_points = [{'x': float(loc.x), 'y': float(loc.y)} for loc in rs.path]
+                if path_points:
+                    logger.info(f"[RMF Path] Received {len(path_points)} waypoints for robot {rid}")
+                self._rm.on_rmf_path(rid, path_points)

@@ -50,6 +50,7 @@ class RobotState:
     bbox: Optional[Dict] = None          # latest detection bbox from AI server
     dest_x: Optional[float] = None       # navigate_to 목적지 x
     dest_y: Optional[float] = None       # navigate_to 목적지 y
+    path: List[Dict[str, float]] = field(default_factory=list) # RMF path sequence
 
 
 # ──────────────────────────────────────────────
@@ -159,6 +160,13 @@ class RobotManager:
         if prev_mode == 'IDLE' and state.mode == 'TRACKING':
             self._push_web(robot_id, {'type': 'registration_done',
                                       'robot_id': robot_id})
+
+    def on_rmf_path(self, robot_id: str, path: list[dict]) -> None:
+        """RMF FleetState에서 수신된 경로 데이터를 로봇 상태에 저장하고 UI로 전파."""
+        with self._lock:
+            st = self._get_or_create(robot_id)
+            st.path = path
+        self._push_status(robot_id, st)
 
     def on_alarm(self, robot_id: str, payload: dict) -> None:
         """Process /robot_<id>/alarm JSON (event: LOCKED | HALTED)."""
@@ -697,6 +705,7 @@ class RobotManager:
             'follow_disabled': state.follow_disabled,
             'waiting_timeout_sec': state.waiting_timeout_sec,
             'bbox': state.bbox,
+            'path': state.path,
         }
         self._push_admin(msg)
         self._push_web(robot_id, self._enrich_status_for_web(robot_id, state, msg))
