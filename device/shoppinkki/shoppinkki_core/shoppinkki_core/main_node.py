@@ -1,7 +1,7 @@
 """ShopPinkki main ROS 2 node entry point.
 
 Wires together:
-    ShoppinkiSM  ←→  BTRunner  ←→  BT1~BT5
+    ShoppinkkiFSM  ←→  BTRunner  ←→  BT1~BT5
     CmdHandler  (subscribes /robot_<id>/cmd)
     HWController (LED / LCD / buzzer)
     Status publisher  (/robot_<id>/status  @ 1 Hz)
@@ -52,7 +52,7 @@ from .config import (
 )
 from shoppinkki_nav.nav2_client import fetch_all_zones
 from .hw_controller import HWController
-from .state_machine import ShoppinkiSM
+from .state_machine import ShoppinkkiFSM
 
 try:
     from shoppinkki_perception.doll_detector import DollDetector
@@ -88,7 +88,7 @@ logger = logging.getLogger(__name__)
 ROBOT_ID = os.environ.get('ROBOT_ID', '54')
 
 
-class ShoppinkiMainNode(Node):
+class ShoppinkkiMainNode(Node):
     """Main node: SM + BT Runner + HW + publishers/subscribers."""
 
     def __init__(self) -> None:
@@ -102,7 +102,7 @@ class ShoppinkiMainNode(Node):
         self._zones: dict[int, dict] = fetch_all_zones(_cs_host, _cs_port)
 
         # ── State machine ─────────────────────
-        self.sm = ShoppinkiSM(
+        self.sm = ShoppinkkiFSM(
             on_state_changed=self._on_state_changed,
             on_locked=self._on_locked,
             on_halted=self._on_halted,
@@ -1087,7 +1087,7 @@ class ShoppinkiMainNode(Node):
 
 def main(args=None) -> None:
     rclpy.init(args=args)
-    node = ShoppinkiMainNode()
+    node = ShoppinkkiMainNode()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

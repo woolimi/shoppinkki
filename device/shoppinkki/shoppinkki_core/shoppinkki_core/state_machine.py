@@ -23,7 +23,7 @@ from transitions import Machine, MachineError
 logger = logging.getLogger(__name__)
 
 
-class ShoppinkiSM:
+class ShoppinkkiFSM:
     """State machine for one ShopPinkki robot.
 
     Parameters
@@ -151,8 +151,8 @@ class ShoppinkiSM:
 
         self.machine = Machine(
             model=self,
-            states=ShoppinkiSM.states,
-            transitions=ShoppinkiSM._transitions,
+            states=ShoppinkkiFSM.states,
+            transitions=ShoppinkkiFSM._transitions,
             initial='CHARGING',
             auto_transitions=False,
             ignore_invalid_triggers=False,

@@ -14,7 +14,7 @@
 # ============================================================
 
 # ── State Machine ─────────────────────────────────────────
-transitions          # ShoppinkiSM (shoppinkki_core)
+transitions          # ShoppinkkiFSM (shoppinkki_core)
 
 # ── 수치 연산 ──────────────────────────────────────────────
 numpy                # doll_detector, reid_engine, iou_tracker

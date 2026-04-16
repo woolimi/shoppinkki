@@ -174,7 +174,7 @@ stateDiagram-v2
 `LOCKED → RETURNING → CHARGING` 경로로 귀환 시, 상태가 바뀌어도 LED가 잠금 신호를 유지하기 위해 `is_locked_return` 플래그를 사용한다. LED 색 결정은 상태가 아닌 이 플래그를 우선 확인한다.
 
 ```python
-class ShoppinkiSM:
+class ShoppinkkiFSM:
     def __init__(self):
         self.previous_tracking_state = 'TRACKING'
         self.is_locked_return = False
@@ -214,7 +214,7 @@ class ShoppinkiSM:
 
 ### 구조
 ```
-ShoppinkiStateMachine (transitions.Machine)
+ShoppinkkiStateMachine (transitions.Machine)
 ├── states: [CHARGING, IDLE, TRACKING, TRACKING_CHECKOUT,
 │            GUIDING, SEARCHING, WAITING, LOCKED, RETURNING, HALTED]
 ├── initial: CHARGING

@@ -1,4 +1,4 @@
-"""Unit tests for ShoppinkiSM — no ROS, no hardware required.
+"""Unit tests for ShoppinkkiFSM — no ROS, no hardware required.
 
 Run:
     cd ~/ros_ws
@@ -7,25 +7,25 @@ Run:
 
 import pytest
 from transitions import MachineError
-from shoppinkki_core.state_machine import ShoppinkiSM
+from shoppinkki_core.state_machine import ShoppinkkiFSM
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
-def make_sm(**kwargs) -> ShoppinkiSM:
+def make_sm(**kwargs) -> ShoppinkkiFSM:
     """Create a fresh SM, optionally with callbacks."""
-    return ShoppinkiSM(**kwargs)
+    return ShoppinkkiFSM(**kwargs)
 
 
-def reach_tracking(sm: ShoppinkiSM) -> None:
+def reach_tracking(sm: ShoppinkkiFSM) -> None:
     """Drive SM from initial CHARGING to TRACKING."""
     sm.charging_completed()   # → IDLE
     sm.enter_tracking()       # → TRACKING
 
 
-def reach_tracking_checkout(sm: ShoppinkiSM) -> None:
+def reach_tracking_checkout(sm: ShoppinkkiFSM) -> None:
     reach_tracking(sm)
     sm.enter_tracking_checkout()   # → TRACKING_CHECKOUT
 

@@ -2,12 +2,12 @@
 
 import json
 import pytest
-from shoppinkki_core.state_machine import ShoppinkiSM
+from shoppinkki_core.state_machine import ShoppinkkiFSM
 from shoppinkki_core.cmd_handler import CmdHandler
 
 
 def make_handler(**kwargs):
-    sm = ShoppinkiSM()
+    sm = ShoppinkkiFSM()
     handler = CmdHandler(sm=sm, **kwargs)
     return sm, handler
 

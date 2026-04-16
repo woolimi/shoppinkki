@@ -37,7 +37,7 @@ import py_trees_ros.trees
 from rclpy.node import Node
 from shoppinkki_interfaces import DollDetectorInterface
 
-from .state_machine import ShoppinkiSM
+from .state_machine import ShoppinkkiFSM
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 class StateGuard(py_trees.behaviour.Behaviour):
     """SM 이 허용 상태 중 하나이면 SUCCESS, 아니면 FAILURE."""
 
-    def __init__(self, name: str, sm: ShoppinkiSM,
+    def __init__(self, name: str, sm: ShoppinkkiFSM,
                  allowed_states: Set[str]) -> None:
         super().__init__(name)
         self._sm = sm
@@ -67,7 +67,7 @@ class BTRunner:
     Parameters
     ----------
     sm:
-        ShoppinkiSM 인스턴스.
+        ShoppinkkiFSM 인스턴스.
     bt_tracking ... bt_returning:
         py_trees.behaviour.Behaviour 인스턴스 (BT1~BT5).
     on_arrived / on_nav_failed:
@@ -76,7 +76,7 @@ class BTRunner:
 
     def __init__(
         self,
-        sm: ShoppinkiSM,
+        sm: ShoppinkkiFSM,
         bt_tracking: py_trees.behaviour.Behaviour,
         bt_searching: py_trees.behaviour.Behaviour,
         bt_waiting: py_trees.behaviour.Behaviour,

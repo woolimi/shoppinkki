@@ -82,7 +82,7 @@ shoppinkki_core/
 │   │                                ANGULAR_Z_MAX, MIN_DIST, IMAGE_WIDTH)
 │   ├── main_node.py              ← ROS2 Node 진입점. 각 모듈을 조합하여 spin()
 │   ├── ns_bringup.py             ← 네임스페이스 기반 bringup 유틸리티
-│   ├── state_machine.py          ← ShoppinkiSM (transitions 라이브러리)
+│   ├── state_machine.py          ← ShoppinkkiFSM (transitions 라이브러리)
 │   │                                - 10개 상태 정의
 │   │                                - on_enter_* / on_exit_* 콜백
 │   │                                - is_locked_return, previous_tracking_state

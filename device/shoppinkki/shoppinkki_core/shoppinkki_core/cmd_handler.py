@@ -21,7 +21,7 @@ import json
 import logging
 from typing import Callable, Optional
 
-from .state_machine import ShoppinkiSM
+from .state_machine import ShoppinkkiFSM
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ class CmdHandler:
     Parameters
     ----------
     sm:
-        The robot's ShoppinkiSM instance.
+        The robot's ShoppinkkiFSM instance.
     on_navigate_to:
         Called with (zone_id, x, y, theta) when navigate_to cmd is received.
     on_delete_item:
@@ -60,7 +60,7 @@ class CmdHandler:
 
     def __init__(
         self,
-        sm: ShoppinkiSM,
+        sm: ShoppinkkiFSM,
         on_navigate_to: Optional[Callable[[int, float, float, float], None]] = None,
         on_delete_item: Optional[Callable[[int], None]] = None,
         on_admin_goto: Optional[Callable[[float, float, float], None]] = None,
