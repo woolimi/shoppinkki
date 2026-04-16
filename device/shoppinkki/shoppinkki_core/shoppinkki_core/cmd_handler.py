@@ -70,10 +70,12 @@ class CmdHandler:
         on_retake_registration: Optional[Callable[[], None]] = None,
         on_enter_simulation: Optional[Callable[[], None]] = None,
         on_registration_confirm: Optional[Callable[[dict], None]] = None,
-        on_navigate_cancel: Optional[Callable[[], None]] = None,
+        on_navigate_through_poses: Optional[Callable[[list], None]] = None,
+    on_navigate_cancel: Optional[Callable[[], None]] = None,
     ) -> None:
         self.sm = sm
         self._on_navigate_to = on_navigate_to
+        self._on_navigate_through_poses = on_navigate_through_poses
         self._on_delete_item = on_delete_item
         self._on_admin_goto = on_admin_goto
         self._on_start_session = on_start_session
@@ -204,6 +206,23 @@ class CmdHandler:
         """HALTED / CHARGING(locked) → reset is_locked_return + end session."""
         self.sm.handle_staff_resolved()
 
+    def _handle_navigate_through_poses(self, payload: dict) -> None:
+        """TRACKING / TRACKING_CHECKOUT → GUIDING (다중 경유점)."""
+        state = self.sm.state
+        if state not in ('TRACKING', 'TRACKING_CHECKOUT', 'IDLE', 'WAITING',
+                         'GUIDING', 'CHARGING', 'SEARCHING'):
+            logger.warning('navigate_through_poses ignored in state=%s', state)
+            return
+
+        poses = payload.get('poses', [])
+        if not poses:
+            logger.warning('navigate_through_poses: empty poses')
+            return
+
+        self.sm.enter_guiding()
+        if self._on_navigate_through_poses:
+            self._on_navigate_through_poses(poses)
+
     def _handle_navigate_cancel(self, payload: dict) -> None:
         """현재 Nav2 goal 취소. fleet adapter stop/replan 시 호출."""
         if self.sm.state != 'GUIDING':
@@ -292,6 +311,7 @@ class CmdHandler:
         'mode':                  _handle_mode,
         'resume_tracking':       _handle_resume_tracking,
         'navigate_to':           _handle_navigate_to,
+        'navigate_through_poses': _handle_navigate_through_poses,
         'navigate_cancel':       _handle_navigate_cancel,
         'payment_success':       _handle_payment_success,
         'delete_item':           _handle_delete_item,

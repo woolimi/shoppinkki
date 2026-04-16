@@ -3,8 +3,8 @@
 Sequence:
     1. Keepout Filter 활성화
     2. 주차 슬롯 조회 (REST)
-    3. 열 입구 노드까지 이동 (충돌 감지 ON)
-    4. 충돌 감지 OFF → cmd_vel 후진으로 충전소 도킹
+    3. (하단 구역이면) 하단_복도 경유
+    4. 충전소까지 직행
     5. Keepout Filter 비활성화
     6. SUCCESS → enter_charging
 """
@@ -23,13 +23,6 @@ from shoppinkki_interfaces import RobotPublisherInterface
 
 logger = logging.getLogger(__name__)
 
-# 로봇별 열 입구 노드 좌표 (3열_입구, 2열_입구 등)
-# robot_id → (x, y, theta)
-ROW_ENTRANCE_NODES: dict[str, tuple[float, float, float]] = {
-    '54': (0.245, -0.899, 0.0),   # 3열_입구 (P2와 같은 y)
-    '18': (0.245, -0.606, 0.0),   # 2열_입구 (P1과 같은 y)
-}
-
 # 하단_복도 노드 — 결제구역/출구 근처에서 RETURNING 시 경유
 LOWER_CORRIDOR_NODE: tuple[float, float, float] = (0.0, -1.137, 0.0)
 # 이 y좌표 이하면 결제구역/출구 근처 → 하단_복도 경유
@@ -41,15 +34,14 @@ class _Phase(Enum):
     INIT = auto()
     KEEPOUT_ON = auto()
     GET_SLOT = auto()
-    PRE_NAVIGATE = auto()  # 하단_복도까지 (무조건 경유)
-    NAVIGATING = auto()    # 열 입구까지 (충돌 감지 ON)
-    DOCKING = auto()       # 후진으로 충전소까지 (충돌 감지 OFF)
+    PRE_NAVIGATE = auto()  # 하단_복도까지 (하단 구역일 때만)
+    DOCKING = auto()       # 충전소까지 직행
     DONE = auto()
     FAILED = auto()
 
 
 class ReturnToCharger(py_trees.behaviour.Behaviour):
-    """충전소 복귀 — 열 입구 → 후진 도킹."""
+    """충전소 복귀 — 충전소 직행."""
 
     def __init__(
         self,
@@ -79,9 +71,6 @@ class ReturnToCharger(py_trees.behaviour.Behaviour):
         self._pre_nav_thread: Optional[threading.Thread] = None
         self._pre_nav_done: bool = False
         self._pre_nav_success: bool = False
-        self._nav_thread: Optional[threading.Thread] = None
-        self._nav_done: bool = False
-        self._nav_success: bool = False
         self._dock_thread: Optional[threading.Thread] = None
         self._dock_done: bool = False
         self._dock_success: bool = False
@@ -92,9 +81,6 @@ class ReturnToCharger(py_trees.behaviour.Behaviour):
         self._pre_nav_thread = None
         self._pre_nav_done = False
         self._pre_nav_success = False
-        self._nav_thread = None
-        self._nav_done = False
-        self._nav_success = False
         self._dock_thread = None
         self._dock_done = False
         self._dock_success = False
@@ -116,9 +102,6 @@ class ReturnToCharger(py_trees.behaviour.Behaviour):
 
         if self._phase == _Phase.PRE_NAVIGATE:
             return self._tick_pre_navigate()
-
-        if self._phase == _Phase.NAVIGATING:
-            return self._tick_navigate()
 
         if self._phase == _Phase.DOCKING:
             return self._tick_docking()
@@ -165,8 +148,8 @@ class ReturnToCharger(py_trees.behaviour.Behaviour):
                             cy, LOWER_AREA_THRESHOLD_Y)
                 self._phase = _Phase.PRE_NAVIGATE
                 return py_trees.common.Status.RUNNING
-        logger.info('ReturnToCharger: 하단_복도 스킵 → 열 입구 직행')
-        self._phase = _Phase.NAVIGATING
+        logger.info('ReturnToCharger: 하단_복도 스킵 → 충전소 직행')
+        self._phase = _Phase.DOCKING
         return py_trees.common.Status.RUNNING
 
     def _tick_pre_navigate(self) -> py_trees.common.Status:
@@ -206,64 +189,16 @@ class ReturnToCharger(py_trees.behaviour.Behaviour):
             self._set_inflation(True)
 
         if self._pre_nav_success:
-            logger.info('ReturnToCharger: 하단_복도 도착, inflation ON → 열 입구 이동')
-            self._phase = _Phase.NAVIGATING
+            logger.info('ReturnToCharger: 하단_복도 도착, inflation ON → 충전소 직행')
+            self._phase = _Phase.DOCKING
             return py_trees.common.Status.RUNNING
         else:
             logger.warning('ReturnToCharger: 하단_복도 이동 실패')
             self._fail()
             return py_trees.common.Status.FAILURE
 
-    def _tick_navigate(self) -> py_trees.common.Status:
-        """1단계: 열 입구 노드까지 이동 (충돌 감지 ON)."""
-        if self._send_nav_goal is None or self._slot is None:
-            self._fail()
-            return py_trees.common.Status.FAILURE
-
-        if self._nav_thread is None:
-            entrance = ROW_ENTRANCE_NODES.get(self._robot_id)
-            if entrance is None:
-                logger.warning('ReturnToCharger: no entrance node for robot %s',
-                               self._robot_id)
-                self._fail()
-                return py_trees.common.Status.FAILURE
-
-            ex, ey, etheta = entrance
-            # 입구 노드에서 충전소 반대 방향(+x)을 바라봄 → 후진 시 −x(충전소)로 이동
-            face_charger_theta = 0.0
-            logger.info('ReturnToCharger: [1단계] 열 입구 (%.2f, %.2f) 충돌감지 ON',
-                        ex, ey)
-            if self._set_nav2_mode:
-                self._set_nav2_mode('guiding')
-
-            def _run():
-                try:
-                    self._nav_success = self._send_nav_goal(
-                        ex, ey, face_charger_theta)
-                except Exception as e:
-                    logger.error('ReturnToCharger: nav exception: %s', e)
-                    self._nav_success = False
-                finally:
-                    self._nav_done = True
-
-            self._nav_thread = threading.Thread(target=_run, daemon=True)
-            self._nav_thread.start()
-            return py_trees.common.Status.RUNNING
-
-        if not self._nav_done:
-            return py_trees.common.Status.RUNNING
-
-        if self._nav_success:
-            logger.info('ReturnToCharger: 열 입구 도착 → 후진 도킹 시작')
-            self._phase = _Phase.DOCKING
-            return py_trees.common.Status.RUNNING
-        else:
-            logger.warning('ReturnToCharger: 열 입구 이동 실패')
-            self._fail()
-            return py_trees.common.Status.FAILURE
-
     def _tick_docking(self) -> py_trees.common.Status:
-        """2단계: 충돌 감지 OFF → Nav2로 충전소까지."""
+        """충전소까지 직행 (충돌 감지 OFF)."""
         if self._send_nav_goal is None or self._slot is None:
             self._fail()
             return py_trees.common.Status.FAILURE
@@ -272,7 +207,7 @@ class ReturnToCharger(py_trees.behaviour.Behaviour):
             charger_x = float(self._slot.get('waypoint_x', 0.0))
             charger_y = float(self._slot.get('waypoint_y', 0.0))
             charger_theta = float(self._slot.get('waypoint_theta', 0.0))
-            logger.info('ReturnToCharger: [2단계] Nav2 도킹 → (%.2f, %.2f) 충돌감지 OFF',
+            logger.info('ReturnToCharger: 충전소 직행 → (%.2f, %.2f) 충돌감지 OFF',
                         charger_x, charger_y)
             if self._set_nav2_mode:
                 self._set_nav2_mode('returning')

@@ -163,6 +163,13 @@ class RobotManager:
             )
             if state.mode == 'RETURNING':
                 self._end_session_if_no_unpaid_on_returning(robot_id)
+                # RETURNING 진입 시 충전소까지 경로 계산
+                charger = 'P2' if robot_id == '54' else 'P1'
+                route = self._compute_graph_route(robot_id, charger)
+                state.path = route
+            # 경로 클리어: 도착(GUIDING→WAITING) 또는 비활성(IDLE/CHARGING) 시
+            if state.mode in ('IDLE', 'CHARGING', 'WAITING'):
+                state.path = []
 
         # Push status update to admin and web
         self._push_status(robot_id, state)
@@ -173,7 +180,10 @@ class RobotManager:
                                       'robot_id': robot_id})
 
     def on_rmf_path(self, robot_id: str, path: list[dict]) -> None:
-        """RMF FleetState에서 수신된 경로 데이터를 로봇 상태에 저장하고 UI로 전파."""
+        """RMF FleetState에서 수신된 경로 데이터를 로봇 상태에 저장하고 UI로 전파.
+        빈 path는 무시 — navigate_to에서 설정한 graph route를 보존."""
+        if not path:
+            return
         with self._lock:
             st = self._get_or_create(robot_id)
             st.path = path
@@ -277,6 +287,18 @@ class RobotManager:
                         'reason': f'Robot is in {state.mode}, not IDLE',
                     })
                     return
+            # 목적지 좌표에 가장 가까운 waypoint로 경로 계산
+            gx = payload.get('x')
+            gy = payload.get('y')
+            if gx is not None and gy is not None:
+                dest_name = self._find_nearest_waypoint(float(gx), float(gy))
+                if dest_name:
+                    route = self._compute_graph_route(robot_id, dest_name)
+                    with self._lock:
+                        state.dest_x = float(gx)
+                        state.dest_y = float(gy)
+                        state.path = route
+                    self._push_status(robot_id, state)
             self._relay_to_pi(robot_id, payload)
 
         elif cmd == 'init_pose':
@@ -353,7 +375,7 @@ class RobotManager:
                     'apply_mode': apply_mode,
                 })
 
-        elif cmd in ('mode', 'resume_tracking', 'navigate_to', 'start_session'):
+        elif cmd in ('mode', 'resume_tracking', 'start_session'):
             self._relay_to_pi(robot_id, payload)
 
         elif cmd in ('force_terminate', 'staff_resolved'):
@@ -389,23 +411,34 @@ class RobotManager:
             if not wp_name:
                 logger.warning('navigate_to: zone_id=%s has no waypoints', zone_id)
                 return
-            # UI용 목적지 좌표 즉시 저장
-            wps = db.get_waypoints_by_zone(zone_id)
-            wp = next((w for w in wps if w['name'] == wp_name), None)
-            if wp:
-                with self._lock:
-                    st = self._get_or_create(robot_id)
+            # UI용 목적지 좌표 + nav graph 경로 즉시 저장
+            # wp_name은 zone_id 외 waypoint(과자_해산물 등)일 수 있으므로
+            # fleet_waypoint 전체에서 이름으로 조회
+            all_wps = db.get_fleet_waypoints()
+            wp = next((w for w in all_wps if w['name'] == wp_name), None)
+            route = self._compute_graph_route(robot_id, wp_name)
+            logger.info('navigate_to: wp=%s, route=%d points', wp_name, len(route))
+            with self._lock:
+                st = self._get_or_create(robot_id)
+                if wp:
                     st.dest_x = float(wp['x'])
                     st.dest_y = float(wp['y'])
-            # RMF 경유, 불가 시 직접 relay
-            if self.dispatch_rmf_navigate is not None:
-                self.dispatch_rmf_navigate(robot_id, wp_name)
-                logger.info('navigate_to zone=%s → RMF waypoint=%s', zone_id, wp_name)
-            else:
-                if wp:
-                    payload = dict(payload, x=wp['x'], y=wp['y'],
-                                   theta=wp.get('theta', 0.0))
+                st.path = route
+            self._push_status(robot_id, st)
+            # 경로가 2개 이상이면 navigate_through_poses로 전체 경로 전송
+            if route and len(route) > 1:
+                poses = self._route_to_poses(route, wp_name)
+                self._relay_to_pi(robot_id, {
+                    'cmd': 'navigate_through_poses',
+                    'poses': poses,
+                })
+                logger.info('navigate_to zone=%s → through_poses %d pts',
+                            zone_id, len(poses))
+            elif wp:
+                payload = dict(payload, x=wp['x'], y=wp['y'],
+                               theta=wp.get('theta', 0.0))
                 self._relay_to_pi(robot_id, payload)
+                logger.info('navigate_to zone=%s → single waypoint', zone_id)
                 logger.info('navigate_to zone=%s → direct relay (no RMF)', zone_id)
         elif cmd in ('mode', 'resume_tracking',
                      'start_session', 'enter_simulation',
@@ -678,6 +711,111 @@ class RobotManager:
 
     _OCCUPY_DIST = 0.25
 
+    @staticmethod
+    def _find_nearest_waypoint(x: float, y: float) -> Optional[str]:
+        """좌표에 가장 가까운 waypoint 이름 반환."""
+        try:
+            waypoints = db.get_fleet_waypoints()
+        except Exception:
+            return None
+        best, best_d = None, float('inf')
+        for w in waypoints:
+            d = math.sqrt((w['x'] - x) ** 2 + (w['y'] - y) ** 2)
+            if d < best_d:
+                best_d = d
+                best = w['name']
+        return best
+
+    def _compute_graph_route(self, robot_id: str, dest_wp_name: str) -> list[dict]:
+        """nav graph에서 로봇 현재 위치 → 목적지 waypoint까지 최단 경로 계산 (BFS)."""
+        try:
+            waypoints = db.get_fleet_waypoints()
+            lanes = db.get_fleet_lanes()
+        except Exception:
+            logger.exception('Failed to load nav graph for route')
+            return []
+
+        if not waypoints or not lanes:
+            return []
+
+        # idx → waypoint 매핑
+        wp_by_idx: dict[int, dict] = {w['idx']: w for w in waypoints}
+        wp_by_name: dict[str, dict] = {w['name']: w for w in waypoints}
+
+        dest_wp = wp_by_name.get(dest_wp_name)
+        if not dest_wp:
+            return []
+        dest_idx = dest_wp['idx']
+
+        # 인접 리스트 (방향 그래프)
+        adj: dict[int, list[int]] = {}
+        for lane in lanes:
+            f, t = lane['from_idx'], lane['to_idx']
+            adj.setdefault(f, []).append(t)
+
+        # 로봇 현재 위치에서 가장 가까운 waypoint 찾기
+        with self._lock:
+            st = self._states.get(robot_id)
+            if not st:
+                return []
+            rx, ry = st.pos_x, st.pos_y
+
+        closest_idx = None
+        closest_dist = float('inf')
+        for w in waypoints:
+            d = math.sqrt((w['x'] - rx) ** 2 + (w['y'] - ry) ** 2)
+            if d < closest_dist:
+                closest_dist = d
+                closest_idx = w['idx']
+
+        if closest_idx is None or closest_idx == dest_idx:
+            return [{'x': dest_wp['x'], 'y': dest_wp['y']}]
+
+        # BFS
+        from collections import deque
+        queue = deque([(closest_idx, [closest_idx])])
+        visited = {closest_idx}
+        while queue:
+            node, path = queue.popleft()
+            if node == dest_idx:
+                return [{'x': float(wp_by_idx[i]['x']),
+                         'y': float(wp_by_idx[i]['y'])} for i in path]
+            for nxt in adj.get(node, []):
+                if nxt not in visited:
+                    visited.add(nxt)
+                    queue.append((nxt, path + [nxt]))
+
+        # 경로 못 찾으면 직선
+        return [{'x': rx, 'y': ry}, {'x': dest_wp['x'], 'y': dest_wp['y']}]
+
+    def _route_to_poses(self, route: list[dict], dest_wp_name: str) -> list[dict]:
+        """route [{x,y}, ...] 에 theta를 추가하여 [{x,y,theta}, ...] 반환."""
+        waypoints = db.get_fleet_waypoints()
+        wp_by_name = {w['name']: w for w in waypoints}
+
+        poses = []
+        for i, pt in enumerate(route):
+            # 좌표 일치하는 waypoint 찾아서 orientation 가져오기
+            wp = next((w for w in waypoints
+                       if abs(w['x'] - pt['x']) < 0.01
+                       and abs(w['y'] - pt['y']) < 0.01), None)
+
+            if i == len(route) - 1:
+                # 최종 목적지: 저장된 orientation 사용
+                dest = wp_by_name.get(dest_wp_name)
+                theta = float(dest['theta']) if dest and dest.get('theta') else 0.0
+            elif wp and wp.get('theta') is not None and wp.get('pickup_zone'):
+                # pickup zone은 저장된 orientation 사용
+                theta = float(wp['theta'])
+            else:
+                # 중간 waypoint: 다음 waypoint 방향으로 heading
+                dx = route[i + 1]['x'] - pt['x']
+                dy = route[i + 1]['y'] - pt['y']
+                theta = math.atan2(dy, dx) if (abs(dx) > 0.001 or abs(dy) > 0.001) else 0.0
+
+            poses.append({'x': pt['x'], 'y': pt['y'], 'theta': round(theta, 4)})
+        return poses
+
     def _pick_waypoint_for_zone(self, robot_id: str, zone_id: int) -> Optional[str]:
         """zone_id에 속하는 waypoint 중 다른 로봇과 충돌하지 않는 것을 선택."""
         waypoints = db.get_waypoints_by_zone(zone_id)
@@ -744,6 +882,7 @@ class RobotManager:
             'follow_disabled': state.follow_disabled,
             'waiting_timeout_sec': state.waiting_timeout_sec,
             'bbox': state.bbox,
+            'path': state.path,
         }
         others: List[dict] = []
         with self._lock:

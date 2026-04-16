@@ -52,14 +52,14 @@ levels:
       - [ 0.186, -1.544, {name: "결제구역1",   is_holding_point: true}]                          # 16
       - [ 0.183, -1.402, {name: "결제구역2",   is_holding_point: true}]                          # 17
       # 내부 1열 (y=-0.300, 선반에서 5cm)
-      - [ 0.489, -0.300, {name: "빵1",         pickup_zone: true, orientation: 1.5708}]           # 18
-      - [ 0.699, -0.300, {name: "빵2",         pickup_zone: true, orientation: 1.5708}]           # 19
+      - [ 0.489, -0.300, {name: "빵1",         pickup_zone: true, orientation: -1.5708}]          # 18
+      - [ 0.699, -0.300, {name: "빵2",         pickup_zone: true, orientation: -1.5708}]          # 19
       # 내부 2열 (y=-0.606, 선반에서 5cm)
-      - [ 0.699, -0.606, {name: "가공식품1",   pickup_zone: true, orientation: -1.5708}]          # 20
-      - [ 0.489, -0.606, {name: "가공식품2",   pickup_zone: true, orientation: -1.5708}]          # 21
+      - [ 0.699, -0.606, {name: "가공식품1",   pickup_zone: true, orientation: 1.5708}]           # 20
+      - [ 0.489, -0.606, {name: "가공식품2",   pickup_zone: true, orientation: 1.5708}]           # 21
       # 내부 3열 (y=-0.899, 선반에서 5cm)
-      - [ 0.699, -0.899, {name: "음료1",       pickup_zone: true, orientation: 1.5708}]           # 22
-      - [ 0.699, -1.224, {name: "음료2",       pickup_zone: true, orientation: -1.5708}]          # 23
+      - [ 0.699, -0.899, {name: "음료1",       pickup_zone: true, orientation: -1.5708}]          # 22
+      - [ 0.699, -1.224, {name: "음료2",       pickup_zone: true, orientation: 1.5708}]           # 23
       # 통로 waypoint
       - [ 0.245, -0.057, {name: "로비",       is_holding_point: true}]                            # 24
       - [ 0.245, -0.300, {name: "1열_입구",   is_holding_point: true}]                            # 25
@@ -81,8 +81,6 @@ levels:
       # ── 외곽 루프 — 왼쪽 복도 ────────────────────────────────────────────────
       - [0,  1,  {is_bidirectional: false}]
       - [1,  0,  {is_bidirectional: false}]
-      - [2,  3,  {is_bidirectional: false}]
-      - [3,  2,  {is_bidirectional: false}]
       - [36, 4,  {is_bidirectional: false}]
       - [4,  36, {is_bidirectional: false}]
       - [4,  5,  {is_bidirectional: false}]

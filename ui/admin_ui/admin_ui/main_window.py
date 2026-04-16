@@ -192,6 +192,27 @@ class MainWindow(QMainWindow):
             selector_row.addWidget(btn)
             self._selector_buttons[rid] = btn
         selector_row.addStretch()
+
+        # 전체 제어 버튼
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.VLine)
+        sep.setFixedHeight(28)
+        selector_row.addWidget(sep)
+
+        btn_all_wait = QPushButton('전체 대기')
+        btn_all_wait.setFixedHeight(32)
+        btn_all_wait.setToolTip('모든 로봇을 WAITING 상태로 전환')
+        btn_all_wait.setStyleSheet('color: #2980b9; font-weight: bold;')
+        btn_all_wait.clicked.connect(lambda: self._send_all('mode', 'WAITING'))
+        selector_row.addWidget(btn_all_wait)
+
+        btn_all_return = QPushButton('전체 복귀')
+        btn_all_return.setFixedHeight(32)
+        btn_all_return.setToolTip('모든 로봇을 충전소로 복귀')
+        btn_all_return.setStyleSheet('color: #9b59b6; font-weight: bold;')
+        btn_all_return.clicked.connect(lambda: self._send_all('mode', 'RETURNING'))
+        selector_row.addWidget(btn_all_return)
+
         card_outer.addLayout(selector_row)
 
         # pending actions 배너 (#6)
@@ -202,6 +223,9 @@ class MainWindow(QMainWindow):
         )
         self._lbl_pending.hide()
         card_outer.addWidget(self._lbl_pending)
+
+        # 카드 영역을 수직 중앙 배치
+        card_outer.addStretch()
 
         # 각 로봇 카드 (모두 생성, 선택된 것만 표시)
         self._robot_cards: dict[str, RobotCard] = {}
@@ -581,6 +605,52 @@ class MainWindow(QMainWindow):
         if rid in self._robot_cards:
             self._robot_cards[rid].set_goto_pending(False)
         self._update_pending_banner()
+
+    # ------------------------------------------------------------------
+    # 전체 로봇 제어
+    # ------------------------------------------------------------------
+
+    def _send_all(self, cmd: str, value: str):
+        """모든 로봇에 동일한 명령 전송 (상태 조건 체크 포함)."""
+        from .robot_card import _WAITING_MODES, _RETURNING_MODES
+        allowed = {
+            'WAITING': _WAITING_MODES,
+            'RETURNING': _RETURNING_MODES,
+        }
+        valid_modes = allowed.get(value)
+        targets = []
+        skipped = []
+        for rid in self._robot_ids:
+            mode = self._robot_states.get(rid, {}).get('mode', 'OFFLINE')
+            if valid_modes and mode in valid_modes:
+                targets.append(rid)
+            else:
+                skipped.append(rid)
+
+        if not targets:
+            self.statusBar().showMessage(
+                f'전체 {value}: 전환 가능한 로봇이 없습니다'
+            )
+            return
+
+        label = '대기' if value == 'WAITING' else '복귀'
+        names = ', '.join(f'#{r}' for r in targets)
+        reply = QMessageBox.question(
+            self, f'전체 {label} 확인',
+            f'{names} → {value} 전환하시겠습니까?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        for rid in targets:
+            payload = {'cmd': cmd, 'robot_id': rid, 'value': value}
+            self._tcp.send(payload)
+
+        msg = f'전체 {label}: {names} 전송 완료'
+        if skipped:
+            msg += f' (제외: {", ".join(f"#{s}" for s in skipped)})'
+        self.statusBar().showMessage(msg)
 
     # ------------------------------------------------------------------
     # 로봇 카드 클릭 → 상세 다이얼로그

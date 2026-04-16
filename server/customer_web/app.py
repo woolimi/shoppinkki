@@ -264,8 +264,10 @@ def index():
         if data and data.get("is_active"):
             # SM 상태에 따라 /register 또는 /main으로
             robots = _ctrl_rest("GET", "/robots")
-            mode = (robots or {}).get(str(robot_id), {}).get("mode") if robots else None
-            if mode == "IDLE":
+            robot_state = (robots or {}).get(str(robot_id), {}) if robots else {}
+            mode = robot_state.get("mode")
+            follow_disabled = robot_state.get("follow_disabled", False)
+            if mode == "IDLE" and not follow_disabled:
                 return redirect(url_for("register", robot_id=robot_id))
             return redirect(url_for("main", robot_id=robot_id))
         # 만료된 세션 초기화
@@ -365,10 +367,13 @@ def main():
     if requested_robot_id and requested_robot_id != robot_id:
         return redirect(url_for("login", robot_id=robot_id))
     # SM 상태가 IDLE이면 /register로 (아직 등록 전)
+    # 단, 시뮬레이션 모드(follow_disabled)는 인형 등록 불필요
     robots = _ctrl_rest("GET", "/robots")
     if robots:
-        mode = robots.get(str(robot_id), {}).get("mode")
-        if mode == "IDLE":
+        robot_state = robots.get(str(robot_id), {})
+        mode = robot_state.get("mode")
+        follow_disabled = robot_state.get("follow_disabled", False)
+        if mode == "IDLE" and not follow_disabled:
             return redirect(url_for("register", robot_id=robot_id))
     return render_template(
         "main.html",

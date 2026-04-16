@@ -150,14 +150,14 @@ INSERT INTO fleet_waypoint (idx, name, x, y, theta, zone_id, is_charger, is_park
 (16, '결제구역1',      0.186, -1.544, 0,       150,  false, false, false, true),
 (17, '결제구역2',      0.183, -1.402, 0,       150,  false, false, false, true),
 -- 내부 1열 (y=-0.300, 선반에서 5cm)
-(18, '빵1',            0.489, -0.300, 1.5708,  7,    false, false, true,  false),
-(19, '빵2',            0.699, -0.300, 1.5708,  7,    false, false, true,  false),
+(18, '빵1',            0.489, -0.300, -1.5708, 7,    false, false, true,  false),
+(19, '빵2',            0.699, -0.300, -1.5708, 7,    false, false, true,  false),
 -- 내부 2열 (y=-0.606, 선반에서 5cm)
-(20, '가공식품1',      0.699, -0.606, -1.5708, 8,    false, false, true,  false),
-(21, '가공식품2',      0.489, -0.606, -1.5708, 8,    false, false, true,  false),
+(20, '가공식품1',      0.699, -0.606, 1.5708,  8,    false, false, true,  false),
+(21, '가공식품2',      0.489, -0.606, 1.5708,  8,    false, false, true,  false),
 -- 내부 3열 (y=-0.899, 선반에서 5cm)
-(22, '음료1',          0.699, -0.899, 1.5708,  6,    false, false, true,  false),
-(23, '음료2',          0.699, -1.224, -1.5708, 6,    false, false, true,  false),
+(22, '음료1',          0.699, -0.899, -1.5708, 6,    false, false, true,  false),
+(23, '음료2',          0.699, -1.224, 1.5708,  6,    false, false, true,  false),
 -- 통로 waypoint
 (24, '로비',            0.245, -0.057, 0,       NULL, false, false, false, true),
 (25, '1열_입구',        0.245, -0.300, 0,       NULL, false, false, false, true),
@@ -188,7 +188,7 @@ ON CONFLICT (idx) DO UPDATE SET
 -- FLEET_LANE (shop_nav_graph.yaml 레인 — 단방향 쌍)
 INSERT INTO fleet_lane (from_idx, to_idx) VALUES
 -- 외곽 루프 — 왼쪽 복도
-(0,1),(1,0),(2,3),(3,2),(36,4),(4,36),(4,5),(5,4),
+(0,1),(1,0),(36,4),(4,36),(4,5),(5,4),
 -- 외곽 루프 — 위쪽 복도
 (0,24),(24,0),(24,6),(6,24),(6,7),(7,6),(7,8),(8,7),(8,9),(9,8),
 -- 외곽 루프 — 오른쪽 복도

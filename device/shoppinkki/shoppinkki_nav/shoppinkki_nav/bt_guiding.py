@@ -27,16 +27,19 @@ class NavigateToZone(py_trees.behaviour.Behaviour):
         name: str = 'NavigateToZone',
         publisher: RobotPublisherInterface = None,
         send_nav_goal: Optional[Callable[[float, float, float], bool]] = None,
+        send_nav_through_poses: Optional[Callable[[list], bool]] = None,
         on_arrived: Optional[Callable[[str], None]] = None,
         on_nav_failed: Optional[Callable[[], None]] = None,
     ) -> None:
         super().__init__(name)
         self._pub = publisher
         self._send_nav_goal = send_nav_goal
+        self._send_nav_through_poses = send_nav_through_poses
         self._on_arrived = on_arrived
         self._on_nav_failed = on_nav_failed
 
         self._goal: Optional[Tuple[float, float, float]] = None
+        self._goals: Optional[list[Tuple[float, float, float]]] = None
         self._zone_name: str = ''
         self._in_progress: bool = False
         self._nav_success: Optional[bool] = None
@@ -79,6 +82,34 @@ class NavigateToZone(py_trees.behaviour.Behaviour):
         # 아직 스레드 시작 전 → 시작
         self._in_progress = True
         self._nav_success = None
+
+        # 다중 경유점 모드 — 경유점마다 순차 NavigateToPose
+        if self._goals and self._send_nav_goal:
+            goals = list(self._goals)
+            logger.info('NavigateToZone: sequential %d waypoints', len(goals))
+
+            def _run():
+                try:
+                    for i, (gx, gy, gtheta) in enumerate(goals):
+                        logger.info('NavigateToZone: [%d/%d] → (%.2f, %.2f)',
+                                    i + 1, len(goals), gx, gy)
+                        ok = self._send_nav_goal(gx, gy, gtheta)
+                        if not ok:
+                            logger.warning('NavigateToZone: [%d/%d] failed', i + 1, len(goals))
+                            self._nav_success = False
+                            return
+                    self._nav_success = True
+                except Exception as e:
+                    logger.error('NavigateToZone: sequential exception: %s', e)
+                    self._nav_success = False
+                finally:
+                    self._in_progress = False
+
+            self._nav_thread = threading.Thread(target=_run, daemon=True)
+            self._nav_thread.start()
+            return py_trees.common.Status.RUNNING
+
+        # 단일 목표점 모드
         x, y, theta = self._goal
 
         def _run():
@@ -110,10 +141,21 @@ class NavigateToZone(py_trees.behaviour.Behaviour):
     def set_goal(self, x: float, y: float, theta: float,
                  zone_name: str = '') -> None:
         self._goal = (x, y, theta)
+        self._goals = None
         self._zone_name = zone_name
         self._in_progress = False
         logger.info('NavigateToZone: goal set → (%.2f, %.2f, θ=%.2f) zone=%s',
                     x, y, theta, zone_name)
+
+    def set_goals(self, poses: list[tuple[float, float, float]],
+                  zone_name: str = '') -> None:
+        """다중 경유점 설정 (NavigateThroughPoses 용)."""
+        self._goals = poses
+        self._goal = poses[-1] if poses else None
+        self._zone_name = zone_name
+        self._in_progress = False
+        logger.info('NavigateToZone: goals set → %d poses, final=(%.2f,%.2f)',
+                    len(poses), poses[-1][0], poses[-1][1])
 
     def _fire_nav_failed(self) -> None:
         if self._on_nav_failed:

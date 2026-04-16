@@ -36,7 +36,7 @@ from std_msgs.msg import String
 # Nav2 action client (optional — graceful fallback if nav2_msgs not installed)
 try:
     from geometry_msgs.msg import PoseStamped
-    from nav2_msgs.action import NavigateToPose
+    from nav2_msgs.action import NavigateToPose, NavigateThroughPoses
     from rclpy.action import ActionClient
     _NAV2_AVAILABLE = True
 except ImportError:
@@ -199,15 +199,24 @@ class ShoppinkiMainNode(Node):
 
         # ── Nav2 action client (admin_goto / navigate_to) ─────
         self._nav2_client = None
+        self._nav2_through_client = None
         if _NAV2_AVAILABLE:
             nav2_action = f'robot_{ROBOT_ID}/navigate_to_pose'
             self._nav2_client = ActionClient(self, NavigateToPose, nav2_action)
             self.get_logger().info(f'Nav2 action client ready ({nav2_action})')
 
+            nav2_through_action = f'robot_{ROBOT_ID}/navigate_through_poses'
+            self._nav2_through_client = ActionClient(
+                self, NavigateThroughPoses, nav2_through_action)
+            self.get_logger().info(f'Nav2 through-poses client ready ({nav2_through_action})')
+
             # Nav2 콜백 연결
             if hasattr(self._bt_guiding, '_send_nav_goal'):
                 self._bt_guiding._send_nav_goal = self._send_nav_goal_guiding
                 self.get_logger().info('BT4 GUIDING: Nav2 connected (collision ON)')
+            if hasattr(self._bt_guiding, '_send_nav_through_poses'):
+                self._bt_guiding._send_nav_through_poses = self._send_nav_through_poses
+                self.get_logger().info('BT4 GUIDING: Nav2 through-poses connected')
             if hasattr(self._bt_returning, '_send_nav_goal'):
                 self._bt_returning._send_nav_goal = self._send_nav_goal
                 self.get_logger().info('BT5 RETURNING: Nav2 send_nav_goal connected')
@@ -244,6 +253,7 @@ class ShoppinkiMainNode(Node):
         self.cmd_handler = CmdHandler(
             sm=self.sm,
             on_navigate_to=self._on_navigate_to,
+            on_navigate_through_poses=self._on_navigate_through_poses,
             on_delete_item=self._on_delete_item,
             on_admin_goto=self._on_admin_goto,
             on_start_session=self._on_start_session,
@@ -503,6 +513,16 @@ class ShoppinkiMainNode(Node):
         if hasattr(self._bt_guiding, 'set_goal'):
             self._bt_guiding.set_goal(x, y, theta)
 
+    def _on_navigate_through_poses(self, poses: list) -> None:
+        """다중 경유점 navigate — BT4에 전체 경로 전달."""
+        goal_poses = [(float(p['x']), float(p['y']), float(p.get('theta', 0.0)))
+                      for p in poses]
+        for i, (px, py, pt) in enumerate(goal_poses):
+            self.get_logger().info('  through_pose[%d]: (%.3f, %.3f, θ=%.2f)' % (i, px, py, pt))
+        self.get_logger().info('navigate_through_poses: %d waypoints' % len(goal_poses))
+        if hasattr(self._bt_guiding, 'set_goals'):
+            self._bt_guiding.set_goals(goal_poses)
+
     def _on_delete_item(self, item_id: int) -> None:
         self.get_logger().info('delete_item: id=%d' % item_id)
         self._cart_items = [i for i in self._cart_items if i.get('id') != item_id]
@@ -636,6 +656,64 @@ class ShoppinkiMainNode(Node):
             return True
         else:
             self.get_logger().warning('send_nav_goal: failed (status=%d)' % result.status)
+            return False
+
+    def _send_nav_through_poses(self, poses: list[tuple[float, float, float]]) -> bool:
+        """Nav2 NavigateThroughPoses 동기 호출 — 다중 경유점 네비게이션."""
+        self._set_nav2_mode('guiding')
+
+        if self._nav2_through_client is None:
+            self.get_logger().warning('send_nav_through_poses: client not available')
+            return False
+        if not self._nav2_through_client.wait_for_server(timeout_sec=5.0):
+            self.get_logger().warning('send_nav_through_poses: Nav2 not ready (5s)')
+            return False
+
+        goal_msg = NavigateThroughPoses.Goal()
+        for x, y, theta in poses:
+            p = PoseStamped()
+            p.header.frame_id = 'map'
+            p.header.stamp = self.get_clock().now().to_msg()
+            p.pose.position.x = x
+            p.pose.position.y = y
+            p.pose.orientation.z = math.sin(theta / 2.0)
+            p.pose.orientation.w = math.cos(theta / 2.0)
+            goal_msg.poses.append(p)
+
+        self.get_logger().info('send_nav_through_poses: %d poses, final=(%.2f,%.2f)'
+                               % (len(poses), poses[-1][0], poses[-1][1]))
+
+        done_event = threading.Event()
+        result_holder: list = [None]
+
+        def _goal_response(future):
+            goal_handle = future.result()
+            if goal_handle is None or not goal_handle.accepted:
+                self.get_logger().warning('send_nav_through_poses: goal rejected')
+                done_event.set()
+                return
+            result_holder.append(goal_handle)
+            goal_handle.get_result_async().add_done_callback(_result_response)
+
+        def _result_response(future):
+            result_holder[0] = future.result()
+            done_event.set()
+
+        self._nav2_through_client.send_goal_async(goal_msg).add_done_callback(_goal_response)
+        done_event.wait(timeout=180.0)
+
+        result = result_holder[0]
+        if result is None:
+            self.get_logger().warning('send_nav_through_poses: timeout or rejected')
+            return False
+
+        from action_msgs.msg import GoalStatus
+        if result.status == GoalStatus.STATUS_SUCCEEDED:
+            self.get_logger().info('send_nav_through_poses: succeeded')
+            return True
+        else:
+            self.get_logger().warning('send_nav_through_poses: failed (status=%d)'
+                                      % result.status)
             return False
 
     def _on_admin_goto(self, x: float, y: float, theta: float) -> None:
