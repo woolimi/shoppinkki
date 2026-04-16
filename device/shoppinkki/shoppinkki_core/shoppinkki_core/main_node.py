@@ -267,7 +267,7 @@ class ShoppinkiMainNode(Node):
             self._cmd_callback, 10)
 
         # ── Timers ────────────────────────────
-        self.create_timer(0.1, self._bt_tick_callback)    # 10 Hz BT tick
+        self.create_timer(0.05, self._bt_tick_callback)   # 20 Hz BT tick (increased for PID responsiveness)
         self.create_timer(1.0, self._status_pub_callback)  # 1 Hz status
 
         # ── TF 기반 위치 추적 ─────────────────
@@ -815,21 +815,25 @@ class ShoppinkiMainNode(Node):
                 if not hasattr(self, '_last_reg_frame_t') or (now - self._last_reg_frame_t) >= 0.083:
                     self._last_reg_frame_t = now
                     self.hw.display_frame(frame, connected=connected, det_count=det_count, is_registration=True, mirror=True)
-            elif state in ('TRACKING', 'TRACKING_CHECKOUT', 'SEARCHING'):
-                det = self.doll_detector.get_latest() if self.doll_detector else None
-                if det:
-                    self.hw.draw_detection(frame, det)
-                self.hw.display_frame(frame, connected=connected, det_count=det_count, mirror=True)
-            elif state == 'IDLE':
-                # IDLE without registration: show QR, don't override with camera
-                pass
-            elif show_debug:
-                det = self.doll_detector.get_latest() if self.doll_detector else None
-                if det:
-                    self.hw.draw_detection(frame, det)
-                self.hw.display_frame(frame, connected=connected, det_count=det_count, mirror=True)
             else:
-                self.hw.display_frame(frame, connected=connected, det_count=det_count, mirror=True)
+                # Normal mode: Throttle LCD updates to ~25 Hz (was 15 Hz) for faster visual feedback
+                now = time.monotonic()
+                if not hasattr(self, '_last_lcd_update_t') or (now - self._last_lcd_update_t) >= 0.040:
+                    self._last_lcd_update_t = now
+                    if state in ('TRACKING', 'TRACKING_CHECKOUT', 'SEARCHING'):
+                        det = self.doll_detector.get_latest() if self.doll_detector else None
+                        if det:
+                            self.hw.draw_detection(frame, det)
+                        self.hw.display_frame(frame, connected=connected, det_count=det_count, mirror=True)
+                    elif show_debug:
+                        det = self.doll_detector.get_latest() if self.doll_detector else None
+                        if det:
+                            self.hw.draw_detection(frame, det)
+                        self.hw.display_frame(frame, connected=connected, det_count=det_count, mirror=True)
+                    else:
+                        # IDLE, WAITING, GUIDING 등의 상태에서는 상태 텍스트/QR 코드가
+                        # LCD 전체를 차지해야 하므로 카메라 피드로 덮어쓰지 않음.
+                        pass
 
             # 스트림용 JPEG 인코딩
             _, jpeg = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 60])
@@ -879,7 +883,7 @@ class ShoppinkiMainNode(Node):
                             self._registration_waiting_confirm = True
                             # Keep pending confirm frame/bbox in detector for exact confirm.
                             self.doll_detector.clear_pending_snapshot()
-                elif (state in ('TRACKING', 'TRACKING_CHECKOUT', 'SEARCHING') or show_debug) and not self._registration_active:
+                elif (state in ('TRACKING', 'TRACKING_CHECKOUT', 'SEARCHING', 'IDLE') or show_debug) and not self._registration_active:
                     # 추종 중이거나 디버그 모드일 때 실시간 감지 실행 (등록 중에는 스킵)
                     self.doll_detector.run(frame)
 

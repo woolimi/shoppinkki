@@ -55,8 +55,8 @@ CONFIG_PATH = os.path.join(_script_dir, 'active_model.json')
 
 # ── 환경 변수 ──────────────────────────────────────────────────────────────────
 MODEL_PATH = os.environ.get('MODEL_PATH', os.path.join(MODELS_DIR, 'best1.pt'))
-FALLBACK_MODEL = os.environ.get('FALLBACK_MODEL', 'yolov8n.pt')
-YOLO_CONF = float(os.environ.get('YOLO_CONFIDENCE', '0.50')) # Default lowered to 0.50
+FALLBACK_MODEL = os.environ.get('FALLBACK_MODEL', 'best1.pt')
+YOLO_CONF = float(os.environ.get('YOLO_CONFIDENCE', '0.60')) # Stricter detection
 HOST = os.environ.get('HOST', '0.0.0.0')
 PORT = int(os.environ.get('PORT', '5005'))
 ENABLE_REID = os.environ.get('ENABLE_REID', 'true').lower() == 'true'
@@ -186,7 +186,8 @@ def infer(model: YOLO, reid: ReIDEngine, frame_bytes: bytes, confidence: float =
         return []
 
     # ByteTracker 적용 (persist=True) - retina_masks=False 로 성능 최적화
-    results = model.track(img, persist=True, conf=confidence, verbose=False, retina_masks=False, imgsz=320)
+    # Heavy resolution: 640
+    results = model.track(img, persist=True, conf=confidence, verbose=False, retina_masks=False, imgsz=640)
     h_img, w_img = img.shape[:2]
     
     outputs = []

@@ -28,7 +28,11 @@ import threading
 import time
 from typing import Dict, List, Optional, Tuple
 import os
-from ultralytics import YOLO
+try:
+    from ultralytics import YOLO
+    _ULTRALYTICS_AVAILABLE = True
+except ImportError:
+    _ULTRALYTICS_AVAILABLE = False
 
 from shoppinkki_interfaces import Detection
 
@@ -38,13 +42,13 @@ from .reid_engine import ReIDEngine
 logger = logging.getLogger(__name__)
 
 # ── 상수 ──────────────────────────────────────────────────────────────────────
-MIN_CONFIDENCE: float = 0.25       # YOLO 최소 신뢰도
+MIN_CONFIDENCE: float = float(os.environ.get('MIN_CONFIDENCE', '0.45'))  # YOLO 최소 신뢰도 (0.25 -> 0.45)
 REGISTRATION_MIN_CONFIDENCE: float = 0.20  # 등록 단계 추가 신뢰도 임계값
 REGISTRATION_MIN_AREA_RATIO: float = 0.005  # 등록 단계 bbox 최소 화면 점유율
 REGISTRATION_SNAPSHOT_COOLDOWN: float = 0.4  # 등록 스냅샷 최소 간격(초)
 REGISTRATION_STABLE_FRAMES: int = 1  # 동일 후보 연속 감지 필요 프레임 수
-REID_THRESHOLD: float = 0.40      # ReID 코사인 유사도 임계값 (osnet_x0_25 기준 완화)
-HSV_THRESHOLD: float = 0.25       # HSV 히스토그램 상관계수 임계값 (조명 변화 대응)
+REID_THRESHOLD: float = float(os.environ.get('REID_THRESHOLD', '0.55')) # ReID 임계값 (0.40 -> 0.55)
+HSV_THRESHOLD: float = 0.45       # HSV 히스토그램 상관계수 임계값 (0.25 -> 0.45)
 CALIBRATION_ADD_THRESHOLD: float = 0.94  # 이 이상이면 이미 커버됨 → 갤러리 추가 안 함
 MAX_GALLERY_SIZE: int = 50        # 최대 갤러리 크기
 VERIFY_FRAMES: int = 5            # safe_id 잠금 필요 연속 매칭 횟수
@@ -73,8 +77,8 @@ class DollDetector:
         self._host = yolo_host
         self._port = yolo_port
         self._lock = threading.Lock()
-        # Owner following should rely on local NCNN detector by default.
-        self._force_local_ncnn = os.environ.get('FORCE_LOCAL_NCNN', 'true').lower() != 'false'
+        # Owner following defaults to remote server to save Pi 5 resources.
+        self._force_local_ncnn = os.environ.get('FORCE_LOCAL_NCNN', 'false').lower() == 'true'
         # Runtime NCNN confidence threshold (0.0~1.0), default 0.25
         try:
             self._ncnn_conf = float(os.environ.get('NCNN_CONF', str(MIN_CONFIDENCE)))
@@ -82,10 +86,11 @@ class DollDetector:
             self._ncnn_conf = MIN_CONFIDENCE
         self._ncnn_conf = max(0.01, min(1.0, self._ncnn_conf))
         try:
-            # Lower default for faster real-time updates on Pi.
-            self._ncnn_imgsz = int(os.environ.get('NCNN_IMGSZ', '416'))
+            # Lower default for faster real-time updates on Pi 5.
+            # 320 is typically 2x faster than 416 on CPU.
+            self._ncnn_imgsz = int(os.environ.get('NCNN_IMGSZ', '320'))
         except Exception:
-            self._ncnn_imgsz = 416
+            self._ncnn_imgsz = 320
         self._ncnn_imgsz = max(160, min(1280, self._ncnn_imgsz))
         self._single_class_model = False
         self._registration_require_red = (
@@ -95,9 +100,9 @@ class DollDetector:
             os.environ.get('REJECT_DARK_OBJECTS', 'true').lower() == 'true'
         )
         try:
-            self._dark_ratio_threshold = float(os.environ.get('DARK_RATIO_THRESHOLD', '0.50'))
+            self._dark_ratio_threshold = float(os.environ.get('DARK_RATIO_THRESHOLD', '0.40')) # Stricter dark rejection (0.50 -> 0.40)
         except Exception:
-            self._dark_ratio_threshold = 0.50
+            self._dark_ratio_threshold = 0.40
         self._dark_ratio_threshold = max(0.05, min(0.95, self._dark_ratio_threshold))
 
         # ── ReID 엔진 ──────────────────────────────────────────────
@@ -145,8 +150,7 @@ class DollDetector:
         self._last_count = 0
         
         # ── 로컬 YOLO (NCNN) ───────────────────────────────────────
-        self._local_model = None
-        if os.path.exists(model_path):
+        if _ULTRALYTICS_AVAILABLE and os.path.exists(model_path):
             try:
                 # Let Ultralytics infer task (detect/segment) from model metadata.
                 self._local_model = YOLO(model_path)
@@ -165,7 +169,10 @@ class DollDetector:
             except Exception as e:
                 logger.error('DollDetector: 로컬 모델 로드 실패: %s', e)
         else:
-            logger.warning('DollDetector: 로컬 모델 없음 (%s), 원격 서버 사용 시도', model_path)
+            if not _ULTRALYTICS_AVAILABLE:
+                logger.info('DollDetector: ultralytics 미설치 — 원격 모드만 사용 가능')
+            else:
+                logger.warning('DollDetector: 로컬 모델 없음 (%s), 원격 서버 사용 시도', model_path)
 
     # ── 공개 API ──────────────────────────────────────────────────────────────
     
@@ -382,7 +389,12 @@ class DollDetector:
             logger.warning('DollDetector: confirm_registration ROI 추출 실패')
             return
 
-        reid_vec = self._reid.extract_features(roi).tolist()
+        # Use features from server if available (e.g. from registration candidate)
+        if source_bbox.get('features'):
+            reid_vec = source_bbox['features']
+        else:
+            reid_vec = self._reid.extract_features(roi).tolist()
+            
         hsv_vec = self._compute_hsv_hist(roi)
 
         with self._lock:
@@ -428,7 +440,8 @@ class DollDetector:
                                 float(best_raw.get('x2', 0)),
                                 float(best_raw.get('y2', 0))
                             ],
-                            mask=best_raw.get('mask')
+                            mask=best_raw.get('mask'),
+                            features=best_raw.get('features')
                         )
                     else:
                         self._latest = None
@@ -473,23 +486,30 @@ class DollDetector:
             # 빠른 경로: safe_id 일치 시 ReID 생략
             if safe_id is not None and tid == safe_id:
                 best_det = d
-                # 자동 보정용 피처는 백그라운드에서 계산
-                roi = self._extract_roi(frame, d)
-                if roi is not None:
-                    best_reid_vec = self._reid.extract_features(roi).tolist()
+                # 자동 보정 주기에만 피처 계산 (리소소 절약)
+                # 원격 서버에서 피처를 이미 준 경우 그것을 사용
+                if self._frame_count % CALIBRATION_INTERVAL == 0:
+                    if d.get('features'):
+                        best_reid_vec = d['features']
+                    else:
+                        roi = self._extract_roi(frame, d)
+                        if roi is not None:
+                            best_reid_vec = self._reid.extract_features(roi).tolist()
                 break
 
-            # 일반 경로: class 필터 + ReID + HSV 매칭
-            if not self._is_doll_class(d):
-                continue
-            if self._reject_dark_objects and self._is_mostly_dark(frame, d, threshold=self._dark_ratio_threshold):
-                continue
+            # 원격 서버에서 준 피처가 있으면 활용, 없으면 추출
+            if d.get('features'):
+                reid_vec = d['features']
+            else:
+                roi = self._extract_roi(frame, d)
+                if roi is None:
+                    continue
+                reid_vec = self._reid.extract_features(roi).tolist()
                 
+            # HSV 는 로컬에서 보조적으로 계산 (색상 필터용)
             roi = self._extract_roi(frame, d)
             if roi is None:
                 continue
-
-            reid_vec = self._reid.extract_features(roi).tolist()
             hsv_vec = self._compute_hsv_hist(roi)
 
             if not gallery_snapshot:
@@ -530,7 +550,8 @@ class DollDetector:
                         float(best_det.get('x2', 0)),
                         float(best_det.get('y2', 0))
                     ],
-                    mask=best_det.get('mask')
+                    mask=best_det.get('mask'),
+                    features=best_det.get('features')
                 )
             elif self.show_all_detections and raw_detections:
                 # 디버그 모드: 주인은 아니지만 감지된 최선의 결과를 노출
@@ -549,7 +570,8 @@ class DollDetector:
                             float(best_raw.get('x2', 0)),
                             float(best_raw.get('y2', 0))
                         ],
-                        mask=best_raw.get('mask')
+                        mask=best_raw.get('mask'),
+                        features=best_raw.get('features')
                     )
                 else:
                     self._latest = None
@@ -798,7 +820,17 @@ class DollDetector:
 
     def _run_remote_yolo(self, frame) -> List[dict]:
         """기존 TCP 서버 방식 추론 (백업용)."""
-        jpeg = _to_jpeg(frame)
+        # ── 성능 최적화: 네트워크 전송 전 리사이즈 (640px 기준) ──
+        # 카메라 해상도가 높을 경우 Wi-Fi 지연의 원인이 됨.
+        h, w = frame.shape[:2]
+        if w > 640:
+            scale = 640.0 / w
+            new_size = (640, int(h * scale))
+            proc_frame = cv2.resize(frame, new_size, interpolation=cv2.INTER_AREA)
+        else:
+            proc_frame = frame
+
+        jpeg = _to_jpeg(proc_frame)
         sock = self._get_socket()
         if sock is None:
             self._connected = False

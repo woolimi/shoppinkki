@@ -25,11 +25,16 @@ try:
         ANGULAR_Z_MAX,
         IMAGE_WIDTH,
         KP_ANGLE,
+        KI_ANGLE,
+        KD_ANGLE,
         KP_DIST,
+        KI_DIST,
+        KD_DIST,
         LINEAR_X_MAX,
         MIN_DIST,
         N_MISS_FRAMES,
         TARGET_SIZE,
+        ANGLE_DEADZONE,
     )
 except ImportError:
     KP_ANGLE = 0.002
@@ -54,9 +59,16 @@ class _TrackingCtx:
         self.publisher = publisher
         self.get_scan = get_scan
         self.miss_count: int = 0
-        # ComputeVelocity → ObstacleAvoidance 로 전달
+        # ComputeVelocity → ObstacleAvoidance 전달용
         self.linear_x: float = 0.0
         self.angular_z: float = 0.0
+        
+        # PID 제어용 상태 (거리 및 각도)
+        self.prev_error_size: float = 0.0
+        self.integral_size: float = 0.0
+        self.prev_error_cx: float = 0.0
+        self.integral_cx: float = 0.0
+        self.last_time: float = 0.0
 
 
 # ── Leaf Behaviours ──────────────────────────────────────────
@@ -97,16 +109,51 @@ class ComputeVelocity(py_trees.behaviour.Behaviour):
             return py_trees.common.Status.FAILURE
 
         import math
+        import time
 
-        # sqrt(area) ≈ bbox 한 변 길이 — 거리에 역비례 (area는 역제곱)
-        # 이렇게 하면 속도 변화가 선형적이고 부드러움
+        # ── 시간 간격 계산 (dt) ──
+        now = time.monotonic()
+        if self._ctx.last_time == 0.0:
+            dt = 0.1  # 기본 10Hz 가정
+        else:
+            dt = now - self._ctx.last_time
+        self._ctx.last_time = now
+        
+        # dt가 너무 크면(예: 일시 중지 후 재개) 튈 수 있으므로 제한
+        if dt > 0.5: dt = 0.1
+
+        # ── 1. 거리 PID (linear_x) ──
         current_size = math.sqrt(det.area)
         error_size = TARGET_SIZE - current_size
-        self._ctx.linear_x = KP_DIST * error_size
+        
+        self._ctx.integral_size += error_size * dt
+        # 적분 윈드업 방지 (Clamping)
+        self._ctx.integral_size = max(-50.0, min(50.0, self._ctx.integral_size))
+        
+        derivative_size = (error_size - self._ctx.prev_error_size) / dt
+        self._ctx.prev_error_size = error_size
+
+        self._ctx.linear_x = (KP_DIST * error_size) + (KI_DIST * self._ctx.integral_size) + (KD_DIST * derivative_size)
         self._ctx.linear_x = max(0.0, min(LINEAR_X_MAX, self._ctx.linear_x))
 
-        error_cx = det.cx - IMAGE_WIDTH / 2.0
-        self._ctx.angular_z = -KP_ANGLE * error_cx
+        # ── 2. 방향 PID (angular_z) ──
+        error_cx = (IMAGE_WIDTH / 2.0) - det.cx  # 좌우 편차 (중심이 0이 되도록)
+        
+        # Deadzone: 중심 근처에서는 회전하지 않음 (Oscillation 방지)
+        if abs(error_cx) < ANGLE_DEADZONE:
+            error_cx = 0.0
+
+        self._ctx.integral_cx += error_cx * dt
+        self._ctx.integral_cx = max(-200.0, min(200.0, self._ctx.integral_cx))
+        
+        derivative_cx = (error_cx - self._ctx.prev_error_cx) / dt
+        self._ctx.prev_error_cx = error_cx
+
+        target_angular_z = (KP_ANGLE * error_cx) + (KI_ANGLE * self._ctx.integral_cx) + (KD_ANGLE * derivative_cx)
+        
+        # Smoothing (Low-pass filter for angular velocity)
+        smoothing = 0.3 # 30% new value, 70% old value
+        self._ctx.angular_z = (smoothing * target_angular_z) + ((1.0 - smoothing) * self._ctx.angular_z)
         self._ctx.angular_z = max(-ANGULAR_Z_MAX, min(ANGULAR_Z_MAX, self._ctx.angular_z))
 
         # ── [NEW] LKP (Last Known Position) 메모리 저장 ──

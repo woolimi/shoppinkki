@@ -223,20 +223,25 @@ class BTRunner:
 
         if state == 'IDLE':
             if self._is_registration_active and self._is_registration_active(): return
-            if not self._enable_idle_proactive_search:
-                return
-            # IDLE 상태에서 인형이 아직 등록되지 않았더라도, 눈앞에 아무것도 안 보이면 일단 탐색(360 회전) 시작
-            # (주인이 어딨는지 몰라서 등록을 못하는 상황 방지, 능동적 카메라 확인)
-            if self.detector is not None and self.detector.is_connected():
-                # [User Request] Skip proactive search if registration is active
-                if self._is_registration_active and self._is_registration_active():
+            
+            # [Auto-Resume] Only if someone is already registered (is_ready)
+            if self.detector is not None and self.detector.is_ready() and self.detector.is_connected():
+                latest = self.detector.get_latest()
+                if latest is not None:
+                    logger.info('BTRunner: Re-acquired owner from IDLE! Resuming TRACKING')
+                    self.sm.enter_tracking()
                     return
 
+            if not self._enable_idle_proactive_search:
+                return
+            
+            # Proactive SEARCHING: Only if someone is registered but not in sight
+            if self.detector is not None and self.detector.is_ready() and self.detector.is_connected():
                 if self.detector.get_latest() is None:
                     import time
                     elapsed = time.monotonic() - self._last_search_fail_time
                     if elapsed >= self._SEARCH_COOLDOWN:
-                        logger.info('BTRunner: Proactive SEARCHING - no doll in sight from IDLE')
+                        logger.info('BTRunner: Proactive SEARCHING - owner missing from IDLE')
                         self.sm.enter_searching()
                     else:
                         logger.debug('BTRunner: Search cooldown active (%.1fs left)', self._SEARCH_COOLDOWN - elapsed)

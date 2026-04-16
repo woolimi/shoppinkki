@@ -25,7 +25,7 @@ try:
     from shoppinkki_core.config import ANGULAR_Z_MAX, MIN_DIST, SEARCH_TIMEOUT
 except ImportError:
     ANGULAR_Z_MAX = 1.0
-    MIN_DIST = 0.20 # Relaxed from 0.25 for tighter spaces
+    MIN_DIST = 0.25
     SEARCH_TIMEOUT = 30.0
 
 logger = logging.getLogger(__name__)
@@ -159,10 +159,16 @@ class CheckDirection(py_trees.behaviour.Behaviour):
                 start_idx = int(225 * step)
                 end_idx = int(315 * step)
             arc = [distances[i % n] for i in range(start_idx, end_idx)]
-            valid = [d for d in arc if d > 0.01]
-            blocked = bool(valid) and min(valid) < MIN_DIST
+            # Filter noise and very close points (some lidars have internal noise < 0.05m)
+            valid = [d for d in arc if d > 0.05]
+            
+            # Robust block detection: require at least 5 points to ignore outliers/ghosts
+            close_points = [d for d in valid if d < MIN_DIST]
+            blocked = len(close_points) >= 5
+            
             if blocked:
-                logger.debug('CheckDirection: Blocked at dist %.2fm', min(valid))
+                logger.debug('CheckDirection: Blocked at dist %.2fm (hits=%d)', 
+                             min(close_points), len(close_points))
             return blocked
         except Exception as e:
             logger.debug('CheckDirection: scan error: %s', e)

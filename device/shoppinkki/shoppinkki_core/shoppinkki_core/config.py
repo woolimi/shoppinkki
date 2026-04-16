@@ -15,14 +15,20 @@ Change **only** ``WAITING_TIMEOUT`` here to retune everywhere that reads it.
 """
 
 # ── P-Control (tracking) ──────────────────────
-TARGET_SIZE: float = 220.0    # stop farther from owner to reduce close-range loss
+TARGET_SIZE: float = 360.0    # Backed off slightly for better camera visibility
 IMAGE_WIDTH: int = 640        # camera horizontal resolution (px)
-KP_ANGLE: float = 0.002       # proportional gain for angular velocity
-KP_DIST: float = 0.0015       # proportional gain for linear velocity (per px) (Reduced for smooth accel)
+KP_ANGLE: float = 0.0010      # Very gentle turning to stop "skiing"
+KI_ANGLE: float = 0.0
+KD_ANGLE: float = 0.0
+ANGLE_DEADZONE: float = 45.0  # (px) Don't turn if doll is near center
+
+KP_DIST: float = 0.0030       # Smooth approach
+KI_DIST: float = 0.0001
+KD_DIST: float = 0.0
 
 # ── Velocity limits ───────────────────────────
-LINEAR_X_MAX: float = 0.12    # max linear  velocity (m/s) — (Reduced for safety)
-ANGULAR_Z_MAX: float = 1.0    # max angular velocity (rad/s)
+LINEAR_X_MAX: float = 0.12    # max linear  velocity (m/s)
+ANGULAR_Z_MAX: float = 0.60   # Lowered to 0.60 to prevent overshooting turns
 
 # ── Obstacle avoidance (LiDAR) ────────────────
 MIN_DIST: float = 0.25        # min obstacle distance before stopping (m)

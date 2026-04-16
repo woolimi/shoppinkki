@@ -31,6 +31,7 @@ class Detection:
     class_name: str = 'doll'
     bbox: Optional[List[float]] = None  # [x1, y1, x2, y2]
     mask: Optional[List[List[float]]] = None  # [[x1, y1], [x2, y2], ...]
+    features: Optional[List[float]] = None  # ReID feature vector (e.g. 1024 floats)
 
 
 @dataclass
