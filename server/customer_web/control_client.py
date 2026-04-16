@@ -116,6 +116,12 @@ class ControlClient:
         msg_type = msg.get("type")
         if not msg_type:
             return
+        # Backward/forward compatibility: server may send payment_success
+        # but customer_web UI listens on payment_done.
+        if msg_type == "payment_success":
+            msg = dict(msg)
+            msg["type"] = "payment_done"
+            msg_type = "payment_done"
         known = {
             "status", "cart", "registration_done", "checkout_zone_enter",
             "payment_done", "checkout_blocked", "find_product_result",

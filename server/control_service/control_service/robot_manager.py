@@ -226,7 +226,8 @@ class RobotManager:
     def on_cart(self, robot_id: str, payload: dict) -> None:
         """Process /robot_<id>/cart JSON and forward to web client."""
         items = payload.get('items', [])
-        self._push_web(robot_id, {'type': 'cart_update', 'items': items})
+        # customer_web expects type="cart"
+        self._push_web(robot_id, {'type': 'cart', 'items': items})
 
     def on_snapshot(self, robot_id: str, payload: dict) -> None:
         """Process /robot_<id>/snapshot — Pi가 인형 감지 시 전송하는 스냅샷.
@@ -609,7 +610,10 @@ class RobotManager:
         db.mark_items_paid(cart['cart_id'])
         self._push_event(robot_id, 'PAYMENT_SUCCESS', user_id=session['user_id'])
         self._relay_to_pi(robot_id, {'cmd': 'payment_success'})
-        self._push_web(robot_id, {'type': 'payment_success'})
+        # customer_web listens to "payment_done" (not "payment_success")
+        self._push_web(robot_id, {'type': 'payment_done', 'robot_id': robot_id})
+        # UX: 결제 완료 후 고객 장바구니 즉시 비우기 (세션은 유지)
+        self._push_web(robot_id, {'type': 'cart', 'robot_id': robot_id, 'items': []})
         logger.info('Payment processed for robot=%s', robot_id)
 
     def _handle_qr_scan(self, robot_id: str, payload: dict) -> None:
