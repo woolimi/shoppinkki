@@ -189,15 +189,17 @@ class RobotManager:
                 else:
                     route = self._router.plan(
                         robot_id, (state.pos_x, state.pos_y), charger)
-                state.path = route
+                with self._lock:
+                    state.path = route
                 self._router.reserve(robot_id, route)
             # 경로 클리어: 도착(GUIDING→WAITING) 또는 비활성(IDLE/CHARGING) 시
             # dest도 같이 비워야 다른 로봇의 navigate_to pick 로직이 이 로봇의
             # 과거 목적지를 "점유 중"으로 오인하지 않는다.
             if state.mode in ('IDLE', 'CHARGING', 'WAITING'):
-                state.path = []
-                state.dest_x = None
-                state.dest_y = None
+                with self._lock:
+                    state.path = []
+                    state.dest_x = None
+                    state.dest_y = None
                 self._router.release(robot_id)
 
         # Push status update to admin and web
@@ -933,6 +935,16 @@ class RobotManager:
         route = self._router.plan(robot_id, (rx, ry), wp_name)
         logger.info('navigate_to: wp=%s, route=%d points', wp_name, len(route))
 
+        # 계획된 경로를 즉시 state에 반영하고 UI에 push.
+        # stagger/block으로 Pi dispatch가 지연되더라도 admin/customer UI는
+        # 요청 즉시 새 경로를 보게 된다. (지연 중 로봇 아이콘은 구 위치에 있고
+        # 경로 선만 새 것이지만, "곧 이동할 경로"로 해석 가능.)
+        if route and len(route) >= 2:
+            with self._lock:
+                st.path = route
+            self._router.reserve(robot_id, route)
+            self._push_status(robot_id, st)
+
         # Stagger: 다른 로봇이 최근에 dispatch됐고 가까이 있으면 대기
         now_ts = time.monotonic()
         for other_id, last_ts in self._last_navigate_dispatch.items():
@@ -973,13 +985,9 @@ class RobotManager:
             })
             return
 
-        # 경로 확보 — dispatch
+        # 경로 확보 — Pi에 dispatch
         self._pending_navigate.pop(robot_id, None)
         self._last_navigate_dispatch[robot_id] = time.monotonic()
-        with self._lock:
-            st.path = route
-        self._router.reserve(robot_id, route)
-        self._push_status(robot_id, st)
 
         if route and len(route) > 1:
             poses = self._route_to_poses(route, wp_name)
