@@ -530,3 +530,56 @@ class TestGuidingYield:
             all_wps=all_wps,
         )
         assert pick is None
+
+    def test_resolve_guiding_conflict_winner_proceeds(self):
+        """Winner (잔여거리 짧은 쪽) 은 원 route 그대로 반환, should_proceed=True."""
+        rm = make_rm()
+        rm.on_status('54', {'mode': 'GUIDING', 'pos_x': 0.0, 'pos_y': 0.0,
+                            'battery': 90.0, 'is_locked_return': False})
+        state = rm.get_state('54')
+        state.dest_x = 1.0
+        state.dest_y = 0.0
+
+        rm._router.detect_conflict = MagicMock(return_value=None)
+        route = [{'x': 0.0, 'y': 0.0}, {'x': 1.0, 'y': 0.0}]
+        used, proceed = rm._resolve_guiding_conflict('54', route, {'zone_id': 22})
+        assert proceed is True
+        assert used == route
+
+    def test_resolve_guiding_conflict_loser_events(self):
+        """Loser 는 YIELD_HOLD event 를 push."""
+        rm = make_rm()
+        events = []
+        rm._push_event = lambda rid, ev, **kw: events.append((rid, ev, kw.get('detail', '')))
+
+        rm.on_status('54', {'mode': 'GUIDING', 'pos_x': 0.0, 'pos_y': 0.0,
+                            'battery': 90.0, 'is_locked_return': False})
+        rm.on_status('18', {'mode': 'GUIDING', 'pos_x': 3.0, 'pos_y': 0.0,
+                            'battery': 90.0, 'is_locked_return': False})
+        st54 = rm.get_state('54')
+        st18 = rm.get_state('18')
+        st54.dest_x = 10.0; st54.dest_y = 0.0  # 54 is far (loser)
+        st18.dest_x = 3.5; st18.dest_y = 0.0   # 18 is close (winner)
+        st18.path = [{'x': 3.0, 'y': 0.0}, {'x': 3.5, 'y': 0.0}]
+
+        from control_service.fleet_router import ConflictInfo
+        info = ConflictInfo(partner_id='18', conflict_entry_idx=1,
+                            conflict_exit_idx=2, conflict_type='E_OPPOSE')
+        rm._router.detect_conflict = MagicMock(return_value=info)
+        rm._pick_yield_vertex = MagicMock(return_value={
+            'idx': 99, 'name': 'HOLD', 'x': 0.5, 'y': 0.0, 'theta': 0.0,
+        })
+        rm._router.plan = MagicMock(return_value=[
+            {'x': 0.0, 'y': 0.0}, {'x': 0.5, 'y': 0.0}])
+        rm._router.reserve = MagicMock()
+        rm._route_to_poses = MagicMock(return_value=[{'x': 0.5, 'y': 0.0, 'theta': 0.0}])
+        rm._relay_to_pi = MagicMock()
+
+        route = [{'x': 0.0, 'y': 0.0}, {'x': 1.0, 'y': 0.0}, {'x': 10.0, 'y': 0.0}]
+        used, proceed = rm._resolve_guiding_conflict('54', route, {'zone_id': 22})
+        assert proceed is False
+        hold_events = [e for e in events if e[1] == 'YIELD_HOLD']
+        assert len(hold_events) == 1
+        assert '18' in hold_events[0][2]
+        # loser payload preserved for resume
+        assert rm._pending_navigate.get('54') == {'zone_id': 22}

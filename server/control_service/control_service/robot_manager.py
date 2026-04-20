@@ -1069,6 +1069,104 @@ class RobotManager:
         # 3차
         return None
 
+    def _resolve_guiding_conflict(
+        self,
+        robot_id: str,
+        route: list[dict],
+        payload: dict,
+    ) -> tuple[list[dict], bool]:
+        """GUIDING dispatch 중 경로 충돌 감지 & 해소.
+
+        Returns: (used_route, should_proceed)
+          - should_proceed=True  → caller 는 원래 흐름 계속 (reserve + dispatch)
+          - should_proceed=False → loser 분기 — 이 함수 내부에서 축소 경로 dispatch
+                                   또는 in-place wait 까지 완료. caller 는 early return.
+        """
+        info = self._router.detect_conflict(route, robot_id)
+        if info is None:
+            return route, True
+
+        # 잔여거리 비교
+        with self._lock:
+            my_state = self._states.get(robot_id)
+            partner_state = self._states.get(info.partner_id)
+        if my_state is None or partner_state is None:
+            return route, True
+
+        my_remaining = self._guiding_remaining(my_state, route)
+        partner_remaining = self._guiding_remaining(
+            partner_state, partner_state.path or [])
+
+        # Tiebreaker: 차이 < 0.05m 이면 사전순 앞이 winner
+        if abs(my_remaining - partner_remaining) < 0.05:
+            im_winner = robot_id < info.partner_id
+        else:
+            im_winner = my_remaining < partner_remaining
+
+        if im_winner:
+            return route, True   # 원 route 로 진행
+
+        # Loser: yield vertex 선택
+        all_wps = db.get_fleet_waypoints()
+        route_idx = self._router._route_to_idx_path(route)
+        partner_route_idx = self._router._route_to_idx_path(partner_state.path or [])
+        yield_wp = self._pick_yield_vertex(
+            route_idx=route_idx,
+            entry_idx=info.conflict_entry_idx,
+            partner_route_idx=partner_route_idx,
+            partner_pos=(partner_state.pos_x, partner_state.pos_y),
+            my_pos=(my_state.pos_x, my_state.pos_y),
+            all_wps=all_wps,
+        )
+
+        # 원 payload 는 resume 용으로 보존
+        self._pending_navigate[robot_id] = dict(payload)
+
+        if yield_wp is None:
+            # 3차: in-place wait — 예약 release, Pi 에 아무 것도 보내지 않음
+            self._router.release(robot_id)
+            with self._lock:
+                my_state.path = []
+            self._push_event(
+                robot_id, 'YIELD_HOLD',
+                detail=f'in-place wait for {info.partner_id} (no candidate)',
+            )
+            return [], False
+
+        # 축소 경로: 현 위치 근처 → yield_wp
+        yield_route = self._router.plan(
+            robot_id, (my_state.pos_x, my_state.pos_y), yield_wp['name'],
+        )
+        if not yield_route or len(yield_route) < 2:
+            # 경로 계산 실패 → in-place wait
+            self._router.release(robot_id)
+            with self._lock:
+                my_state.path = []
+            self._push_event(
+                robot_id, 'YIELD_HOLD',
+                detail=f'in-place wait for {info.partner_id} (plan fail)',
+            )
+            return [], False
+
+        with self._lock:
+            my_state.path = yield_route
+        self._router.reserve(robot_id, yield_route)
+
+        poses = self._route_to_poses(yield_route, yield_wp['name'])
+        self._relay_to_pi(robot_id, {
+            'cmd': 'navigate_through_poses',
+            'poses': poses,
+        })
+        self._push_event(
+            robot_id, 'YIELD_HOLD',
+            detail=f'yield to {info.partner_id} at {yield_wp["name"]}',
+        )
+        logger.info(
+            'GUIDING yield: robot=%s → holding_point=%s (partner=%s, type=%s)',
+            robot_id, yield_wp['name'], info.partner_id, info.conflict_type,
+        )
+        return yield_route, False
+
     def _plan_return_route(
         self, robot_id: str, pos_x: float, pos_y: float,
     ) -> list[dict]:
