@@ -97,7 +97,7 @@ controller_server:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
       # 도달 판정은 pickup zone에서 상품 픽업 가능 거리로 유지.
-      xy_goal_tolerance: 0.06
+      xy_goal_tolerance: 0.10
       yaw_goal_tolerance: 0.12
       check_yaw: true
     FollowPath:

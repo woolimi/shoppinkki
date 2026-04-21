@@ -1,0 +1,72 @@
+<section class="flex flex-col">
+  <h2 class="text-em-xl font-black mt-0 mb-10 text-center w-full">가이드: <span style="color:#E2E8F0">경로 조율 방식</span> 비교</h2>
+
+  <div class="flex gap-4 w-11/12 mx-auto flex-1 min-h-0">
+
+    <!-- 왼쪽: Open-RMF -->
+    <div class="flex-1 rounded-2xl p-4 flex flex-col gap-3" style="background:#0A1929;border:1px solid #4ADE80">
+      <div class="flex items-center gap-2 pb-2" style="border-bottom:1px solid #1E3A5A">
+        <span class="material-icons-round text-em-sm" style="color:#4ADE80">schedule</span>
+        <div>
+          <p class="text-em-xs font-black m-0" style="color:#4ADE80">Open-RMF</p>
+          <p class="text-em-3xs m-0" style="color:#8BACC8">Traffic Schedule + Negotiation</p>
+        </div>
+      </div>
+
+      <div class="rounded-xl px-3 py-2" style="background:#071320">
+        <p class="text-em-3xs font-bold m-0 mb-1" style="color:#4ADE80">예약 차원</p>
+        <p class="text-em-3xs m-0" style="color:#E2E8F0"><strong>시공간</strong> — 궤적 + 시간축</p>
+      </div>
+
+      <div class="rounded-xl px-3 py-2" style="background:#071320">
+        <p class="text-em-3xs font-bold m-0 mb-1" style="color:#4ADE80">충돌 해결</p>
+        <p class="text-em-3xs m-0" style="color:#8BACC8">로봇 간 <strong style="color:#E2E8F0">협상 프로토콜</strong>로 궤적 수정</p>
+      </div>
+
+      <div class="rounded-xl px-3 py-2" style="background:#071320">
+        <p class="text-em-3xs font-bold m-0 mb-1" style="color:#4ADE80">아키텍처</p>
+        <p class="text-em-3xs m-0" style="color:#8BACC8">분산 — Fleet Adapter + Schedule 노드</p>
+      </div>
+
+      <div class="rounded-xl px-3 py-2 mt-auto" style="background:#0d2010">
+        <p class="text-em-3xs m-0" style="color:#4ADE80"><strong>→</strong> 대규모·이기종에 강함</p>
+      </div>
+    </div>
+
+    <!-- 중앙: VS -->
+    <div class="flex items-center shrink-0">
+      <span class="text-em-lg font-black" style="color:#475569">VS</span>
+    </div>
+
+    <!-- 오른쪽: 자체 구현 -->
+    <div class="flex-1 rounded-2xl p-4 flex flex-col gap-3" style="background:#0A1929;border:2px solid #38BDF8">
+      <div class="flex items-center gap-2 pb-2" style="border-bottom:1px solid #1E3A5A">
+        <span class="material-icons-round text-em-sm" style="color:#38BDF8">account_tree</span>
+        <div>
+          <p class="text-em-xs font-black m-0" style="color:#38BDF8">자체 Fleet Router</p>
+          <p class="text-em-3xs m-0" style="color:#8BACC8">Graph Routing + Lane Lock</p>
+        </div>
+      </div>
+
+      <div class="rounded-xl px-3 py-2" style="background:#071320">
+        <p class="text-em-3xs font-bold m-0 mb-1" style="color:#38BDF8">예약 차원</p>
+        <p class="text-em-3xs m-0" style="color:#E2E8F0"><strong>공간</strong> — 그래프 lane 선점</p>
+      </div>
+
+      <div class="rounded-xl px-3 py-2" style="background:#071320">
+        <p class="text-em-3xs font-bold m-0 mb-1" style="color:#38BDF8">충돌 해결</p>
+        <p class="text-em-3xs m-0" style="color:#8BACC8">Dijkstra <strong style="color:#E2E8F0">페널티 가중치</strong>로 자동 우회</p>
+      </div>
+
+      <div class="rounded-xl px-3 py-2" style="background:#071320">
+        <p class="text-em-3xs font-bold m-0 mb-1" style="color:#38BDF8">아키텍처</p>
+        <p class="text-em-3xs m-0" style="color:#8BACC8">중앙 집중 — FleetRouter 단일 노드</p>
+      </div>
+
+      <div class="rounded-xl px-3 py-2 mt-auto" style="background:#0d1a24">
+        <p class="text-em-3xs m-0" style="color:#38BDF8"><strong>→</strong> 2대 규모에 단순·충분</p>
+      </div>
+    </div>
+
+  </div>
+</section>

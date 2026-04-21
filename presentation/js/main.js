@@ -46,33 +46,34 @@ var SLIDES = [
   '40-intro-guide.html',        // 39
   '41-guide.html',              // 40
   '42-guide-pipeline.html',     // 41
-  '43-guide-llm-demo.html',     // 42
-  '44-multi-robot.html',        // 43
-  '45-openrmf-intro.html',      // 44
-  '46-fleet-map.html',          // 45
-  '47-guide-demo.html',         // 46
-  '48-multi-robot-demo.html',   // 47
-  '49-admin-demo.html',         // 48
-  '50-intro-cart.html',         // 49
-  '51-cart.html',               // 50
-  '52-intro-waiting.html',      // 51
-  '53-waiting.html',            // 52
-  '54-waiting-demo.html',       // 53
-  '55-intro-checkout.html',     // 54
-  '56-checkout.html',           // 55
-  '57-checkout-demo.html',      // 56
-  '58-intro-return.html',       // 57
-  '59-return.html',             // 58
-  '60-return-demo.html',        // 59
-  '61-intro-final-demo.html',   // 60
-  '62-final-demo.html',         // 61
-  '63-retrospect.html',         // 62
-  '64-team.html',               // 63
-  '65-thanks.html',             // 64
-  '66-ref-cosine.html',         // 65
-  '67-ref-hsv.html',            // 66
-  '68-ref-hungarian.html',      // 67
-  '69-ref-iou.html',            // 68
+  '43-guide-llm-demo.html',       // 42
+  '44-openrmf-journey.html',      // 43
+  '45-openrmf-intro.html',        // 44
+  '46-nav-graph-concept.html',    // 45
+  '47-fleet-map.html',            // 46
+  '48-openrmf-vs-custom.html',    // 47
+  '49-guide-demo.html',           // 48
+  '50-admin-demo.html',           // 49
+  '51-intro-cart.html',           // 50
+  '52-cart.html',                 // 51
+  '53-intro-waiting.html',        // 52
+  '54-waiting.html',              // 53
+  '55-waiting-demo.html',         // 54
+  '56-intro-checkout.html',       // 55
+  '57-checkout.html',             // 56
+  '58-checkout-demo.html',        // 57
+  '59-intro-return.html',         // 58
+  '60-return.html',               // 59
+  '61-return-demo.html',          // 60
+  '62-intro-final-demo.html',     // 61
+  '63-final-demo.html',           // 62
+  '64-retrospect.html',           // 63
+  '65-team.html',                 // 64
+  '66-thanks.html',               // 65
+  '67-ref-cosine.html',           // 66
+  '68-ref-hsv.html',              // 67
+  '69-ref-hungarian.html',        // 68
+  '70-ref-iou.html',              // 69
 ];
 
 var SLIDE_TITLES = [
@@ -119,32 +120,33 @@ var SLIDE_TITLES = [
   '핵심 기능 3: 가이드',                       // 40 41-guide
   '가이드: 검색 파이프라인',                   // 41 42-guide-pipeline
   '가이드 Demo — 채팅 검색',                  // 42 43-guide-llm-demo
-  '가이드: 다중 로봇 제어',                    // 43 44-multi-robot
+  '가이드: Open-RMF 도입 → 자체 구현',         // 43 44-openrmf-journey
   '가이드: Open-RMF란?',                       // 44 45-openrmf-intro
-  '가이드: Fleet 웨이포인트 배치',             // 45 46-fleet-map
-  '가이드 Demo — 로봇 1대',                   // 46 47-guide-demo
-  '가이드 Demo — 로봇 2대',                   // 47 48-multi-robot-demo
-  '가이드 Demo — Admin UI',                   // 48 49-admin-demo
-  '장바구니',                                  // 49 50-intro-cart
-  '핵심 기능 4: 장바구니',                     // 50 51-cart
-  '대기',                                      // 51 52-intro-waiting
-  '핵심 기능 5: 대기',                         // 52 53-waiting
-  '대기 Demo',                                 // 53 54-waiting-demo
-  '결제',                                      // 54 55-intro-checkout
-  '핵심 기능 6: 결제',                         // 55 56-checkout
-  '결제 Demo',                                 // 56 57-checkout-demo
-  '복귀',                                      // 57 58-intro-return
-  '핵심 기능 7: 복귀',                         // 58 59-return
-  '복귀 Demo',                                 // 59 60-return-demo
-  '최종 데모',                                 // 60 61-intro-final-demo
-  '최종 데모 영상',                             // 61 62-final-demo
-  '회고',                                      // 62 63-retrospect
-  '팀원 소개',                                 // 63 64-team
-  '감사합니다',                                // 64 65-thanks
-  '참고자료 1: 코사인 유사도란?',              // 65 66-ref-cosine
-  '참고자료 2: HSV 히스토그램 상관계수란?',    // 66 67-ref-hsv
-  '참고자료 4: Hungarian Algorithm',           // 67 68-ref-hungarian
-  '참고자료 5: IoU (Intersection over Union)', // 68 69-ref-iou
+  '가이드: Nav Graph란?',                      // 45 46-nav-graph-concept
+  '가이드: Fleet 웨이포인트 배치',             // 46 47-fleet-map
+  '가이드: 경로 조율 방식 비교',               // 47 48-openrmf-vs-custom
+  '가이드 Demo',                              // 48 49-guide-demo
+  '가이드 Demo — Admin UI',                   // 49 50-admin-demo
+  '장바구니',                                  // 50 51-intro-cart
+  '핵심 기능 4: 장바구니',                     // 51 52-cart
+  '대기',                                      // 52 53-intro-waiting
+  '핵심 기능 5: 대기',                         // 53 54-waiting
+  '대기 Demo',                                 // 54 55-waiting-demo
+  '결제',                                      // 55 56-intro-checkout
+  '핵심 기능 6: 결제',                         // 56 57-checkout
+  '결제 Demo',                                 // 57 58-checkout-demo
+  '복귀',                                      // 58 59-intro-return
+  '핵심 기능 7: 복귀',                         // 59 60-return
+  '복귀 Demo',                                 // 60 61-return-demo
+  '최종 데모',                                 // 61 62-intro-final-demo
+  '최종 데모 영상',                             // 62 63-final-demo
+  '회고',                                      // 63 64-retrospect
+  '팀원 소개',                                 // 64 65-team
+  '감사합니다',                                // 65 66-thanks
+  '참고자료 1: 코사인 유사도란?',              // 66 67-ref-cosine
+  '참고자료 2: HSV 히스토그램 상관계수란?',    // 67 68-ref-hsv
+  '참고자료 4: Hungarian Algorithm',           // 68 69-ref-hungarian
+  '참고자료 5: IoU (Intersection over Union)', // 69 70-ref-iou
 ];
 
 async function loadSlides() {
