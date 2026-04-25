@@ -18,9 +18,9 @@ import urllib.request
 import urllib.error
 import logging
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import (
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QColor
+from PyQt5.QtWidgets import (
     QDialog,
     QHBoxLayout,
     QLabel,
@@ -73,7 +73,7 @@ class RobotDetailDialog(QDialog):
         # 메인 Qt event loop가 막혀 그동안 쌓인 status 시그널이 dialog 뜨자마자
         # 폭주해 paint 경합으로 macOS에서 bus error를 유발한다.
         # 이벤트 루프 한 tick 뒤에 실행.
-        from PyQt6.QtCore import QTimer
+        from PyQt5.QtCore import QTimer
         QTimer.singleShot(0, self._fetch_cart)
 
     # ------------------------------------------------------------------

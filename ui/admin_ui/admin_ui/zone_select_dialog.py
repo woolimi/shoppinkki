@@ -9,8 +9,8 @@ from __future__ import annotations
 import json
 import urllib.request
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QLabel,

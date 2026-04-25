@@ -24,9 +24,9 @@
     PAYMENT_SUCCESS: #d4edda, OFFLINE: #dddddd, ONLINE: #d4edda
 """
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QBrush, QColor
-from PyQt6.QtWidgets import (
+from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtGui import QBrush, QColor
+from PyQt5.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,

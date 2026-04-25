@@ -39,9 +39,9 @@ import json
 import time
 import urllib.request
 
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import (
+from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtWidgets import QAction
+from PyQt5.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -144,7 +144,7 @@ class MainWindow(QMainWindow):
             stretch.sizePolicy().horizontalPolicy(),
             stretch.sizePolicy().verticalPolicy(),
         )
-        from PyQt6.QtWidgets import QSizePolicy as SP
+        from PyQt5.QtWidgets import QSizePolicy as SP
         stretch.setSizePolicy(SP.Policy.Expanding, SP.Policy.Preferred)
         toolbar.addWidget(stretch)
 
@@ -698,7 +698,7 @@ class MainWindow(QMainWindow):
             return
 
         dlg = ZoneSelectDialog(self._rest_base, robot_id, parent=self)
-        from PyQt6.QtWidgets import QDialog
+        from PyQt5.QtWidgets import QDialog
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         zone = dlg.selected_zone()

@@ -40,9 +40,9 @@
     goto_mode_activated = pyqtSignal(str)       # robot_id (빈 문자열 = 취소)
 """
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import (
+from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtGui import QColor
+from PyQt5.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,

@@ -167,26 +167,14 @@ else
     . "$ROS_SETUP_FILE"
 fi
 
-# ── 3. Qt 플랫폼 플러그인 설정 (PyQt6 앱용) ───────────────────────────────────
-if [ "$(uname)" = "Darwin" ] && [ -n "$CONDA_BIN" ]; then
-    _qt_plugins="$("$CONDA_BIN/python3" -c \
-      "import PyQt6,os; print(os.path.join(os.path.dirname(PyQt6.__file__),'Qt6/plugins/platforms'))" \
-      2>/dev/null || true)"
-    [ -n "$_qt_plugins" ] && [ -d "$_qt_plugins" ] && \
-        export QT_QPA_PLATFORM_PLUGIN_PATH="$_qt_plugins"
-
-elif [ "$(uname)" = "Linux" ]; then
+# ── 3. Qt 플랫폼 플러그인 설정 (PyQt5 앱용) ───────────────────────────────────
+# PyQt5(conda 또는 apt) + qt-main 동일 env 안에서 plugin은 자동 탐색되므로
+# QT_QPA_PLATFORM_PLUGIN_PATH는 명시 설정하지 않는다. Linux는 Wayland/X11만 지정.
+if [ "$(uname)" = "Linux" ]; then
     if [ -n "$WAYLAND_DISPLAY" ]; then
         export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland}"
     else
         export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
-    fi
-    if [ -n "$CONDA_BIN" ]; then
-        _qt_plugins="$("$CONDA_BIN/python3" -c \
-          "import PyQt6,os; print(os.path.join(os.path.dirname(PyQt6.__file__),'Qt6/plugins/platforms'))" \
-          2>/dev/null || true)"
-        [ -n "$_qt_plugins" ] && [ -d "$_qt_plugins" ] && \
-            export QT_QPA_PLATFORM_PLUGIN_PATH="$_qt_plugins"
     fi
 fi
 

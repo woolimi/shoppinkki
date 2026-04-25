@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 쑈삥끼 UI — 노트북 실행
 #
-# 포함: admin_ui (PyQt6 관제) + customer_web (Flask 고객 웹앱)
+# 포함: admin_ui (PyQt5 관제) + customer_web (Flask 고객 웹앱)
 #
 # 사용법:
 #   ./scripts/run_ui.sh
@@ -33,8 +33,8 @@ tmux set-option -g mouse on 2>/dev/null || true
 
 # ── 창 생성 ────────────────────────────────────────────────────────────────────
 
-# 창 0: admin_ui (PyQt6 — GUI 앱)
-# ros2 run 은 shebang 으로 시스템 python 을 쓰므로 conda 의 PyQt6 가 안 잡힘 → python3 직접 호출
+# 창 0: admin_ui (PyQt5 — GUI 앱)
+# ros2 run 은 shebang 으로 시스템 python 을 쓰므로 conda 의 PyQt5 가 안 잡힘 → python3 직접 호출
 # macOS SIP 가 /usr/bin/env 경유 시 DYLD_LIBRARY_PATH 를 제거하므로 env 사용 금지
 tmux new-session -d -s "$SESSION" -n "admin"
 tmux send-keys -t "${SESSION}:admin" \
@@ -52,7 +52,7 @@ echo ""
 echo "┌──────────────────────────────────────────────────────────┐"
 echo "│         쑈삥끼 UI 기동                                   │"
 echo "├──────────────────────────────────────────────────────────┤"
-echo "│  0. admin    — 관제 앱 (PyQt6)                          │"
+echo "│  0. admin    — 관제 앱 (PyQt5)                          │"
 echo "│  1. customer — 고객 웹앱  http://localhost:8501          │"
 echo "├──────────────────────────────────────────────────────────┤"
 echo "│  로봇 접속: http://localhost:8501/?robot_id=54            │"

@@ -183,7 +183,7 @@ shoppinkki/
 │   ├── control_db/                  ← DB 스키마 + 시드 데이터 (PostgreSQL 17)
 │   └── ai_service/                  ← Docker: 커스텀 YOLO(TCP:5005) + LLM(REST:8000)
 ├── ui/                      ← 관제 PC
-│   └── admin_ui/                    ← PyQt6 TCP 관제 클라이언트
+│   └── admin_ui/                    ← PyQt5 TCP 관제 클라이언트
 └── scripts/
     ├── seed.sh / run_server.sh / run_ui.sh / run_sim.sh / run_robot.sh / run_ai.sh
 ```

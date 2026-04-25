@@ -19,7 +19,7 @@ setup(
     zip_safe=True,
     maintainer='shoppinkki',
     maintainer_email='admin@shoppinkki.local',
-    description='ShopPinkki Admin UI — PyQt6 데스크톱 관제 앱',
+    description='ShopPinkki Admin UI — PyQt5 데스크톱 관제 앱',
     license='Apache-2.0',
     tests_require=['pytest'],
     entry_points={

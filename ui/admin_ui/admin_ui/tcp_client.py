@@ -36,13 +36,13 @@ import socket
 import threading
 import time
 
-from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal
+from PyQt5.QtCore import QObject, QThread, QTimer, pyqtSignal
 
 
 class TCPClientThread(QThread):
     """TCP 클라이언트 스레드.
 
-    중요: macOS PyQt6에서 worker thread의 pyqtSignal emit이 dict/object를
+    중요: macOS PyQt5에서 worker thread의 pyqtSignal emit이 dict/object를
     크로스-스레드 마셜링할 때 간헐적 bus error를 일으킨다. 이를 피하기 위해
     수신된 메시지는 thread-safe Queue에 쌓기만 하고, **메인 스레드의
     QTimer가 polling하여 꺼내 시그널 emit**한다 (emit이 메인 스레드에서

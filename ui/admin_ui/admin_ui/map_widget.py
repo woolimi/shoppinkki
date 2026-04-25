@@ -33,8 +33,8 @@ import os
 from typing import Any
 
 import yaml
-from PyQt6.QtCore import Qt, QPointF, QTimer, pyqtSignal
-from PyQt6.QtGui import (
+from PyQt5.QtCore import Qt, QPointF, QTimer, pyqtSignal
+from PyQt5.QtGui import (
     QColor,
     QFont,
     QMouseEvent,
@@ -44,7 +44,7 @@ from PyQt6.QtGui import (
     QPolygonF,
     QTransform,
 )
-from PyQt6.QtWidgets import QLabel
+from PyQt5.QtWidgets import QLabel
 
 # ────────────────────────────────────────────────────
 # 상수
@@ -771,7 +771,7 @@ class MapWidget(QLabel):
             ox, oy = self._map_offset
             draw_w = int(self._base_pixmap.width() * d)
             draw_h = int(self._base_pixmap.height() * d)
-            from PyQt6.QtCore import QRect
+            from PyQt5.QtCore import QRect
             p.drawPixmap(QRect(ox, oy, draw_w, draw_h), self._base_pixmap)
             # 미세 테두리
             p.setPen(QPen(QColor(255, 255, 255, 30), 1))

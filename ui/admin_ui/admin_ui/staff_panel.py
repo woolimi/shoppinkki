@@ -26,9 +26,9 @@
     resolve_requested = pyqtSignal(str)  # robot_id
 """
 
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import (
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal
+from PyQt5.QtGui import QColor
+from PyQt5.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,

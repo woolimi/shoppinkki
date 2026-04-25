@@ -109,7 +109,7 @@ bash scripts/run_ui.sh
 > `http://localhost:8501/?robot_id=54` 또는 `?robot_id=18`
 
 tmux 창:
-- `0. admin` — admin_ui (PyQt6 관제)
+- `0. admin` — admin_ui (PyQt5 관제)
 - `1. customer` — customer_web (http://localhost:8501)
 
 ---

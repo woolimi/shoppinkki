@@ -54,7 +54,8 @@ mamba install -y \
 mamba install -y ros-jazzy-ros-gz ros-jazzy-gz-ros2-control
 
 # A.6 GUI / DB / 빌드 도구
-mamba install -y pyqt6=6.8.1 psycopg2 colcon-common-extensions cmake pkg-config
+mamba install -y psycopg2 colcon-common-extensions cmake pkg-config
+# PyQt5는 ros-jazzy-python-qt-binding / ros-jazzy-qt-gui (rqt 등)의 의존성으로 자동 설치됨
 
 # A.7 비-ROS Python (pip)
 pip install transitions flask flask-socketio "qrcode[pil]"

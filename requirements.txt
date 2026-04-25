@@ -5,5 +5,5 @@ flask
 flask-socketio
 qrcode[pil]
 psycopg2-binary
-PyQt6
+PyQt5
 py-trees
