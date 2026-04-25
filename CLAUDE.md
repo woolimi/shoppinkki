@@ -43,7 +43,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Full build
-cd ~/ros_ws
+cd ~/shoppinkki
 colcon build
 
 # Build specific packages
@@ -55,15 +55,15 @@ source install/setup.zsh
 
 **Architecture restriction:** `pinky_lamp_control` and `pinky_led` only build on ARM64 (aarch64/Raspberry Pi). They will be skipped automatically on x86 PC.
 
-### Python Dependencies (pip)
+### Python Dependencies
 
-```bash
-pip install transitions              # SM 라이브러리 (shoppinkki_core)
-pip install flask flask-socketio     # customer_web
-pip install ultralytics              # YOLO (ai_server)
-pip install mysql-connector-python   # control_service DB 접속
-pip install qrcode[pil]              # Pi LCD QR 코드 표시 (shoppinkki_core)
-```
+의존성은 매니페스트 파일이 단일 진실 공급원이다. 셋업 절차는 [`docs/setup.md`](docs/setup.md), 실행 절차는 [`docs/run.md`](docs/run.md) 참조.
+
+| 환경 | 매니페스트 |
+|---|---|
+| macOS (RoboStack) | `environment.yml` (부트스트랩) + README 단계별 install (+ 옵션 `environment-ai.yml`) |
+| Ubuntu 노트북 | `requirements.txt` (+ 옵션 `requirements-ai.txt`) |
+| Raspberry Pi 5 | `robot.requirements.txt` |
 
 ## Testing & Linting
 
@@ -165,10 +165,13 @@ ros2 topic echo /amcl_pose       # 현재 로봇 pose
 ## Directory Structure
 
 ```
-ros_ws/
+shoppinkki/
 ├── device/                  ← Pi 5 로봇 실행 패키지
 │   ├── pinky_pro/                   ← 하드웨어 플랫폼 패키지
 │   ├── sllidar_ros2/                ← LiDAR 드라이버 (git submodule)
+│   ├── py_trees_ros/                ← BT 런타임 (git submodule, devel)
+│   ├── py_trees_ros_interfaces/     ← BT 메시지/액션 (git submodule, devel)
+│   ├── py_trees_ros_viewer/         ← BT 시각화 도구 옵션 (git submodule, devel)
 │   └── shoppinkki/                  ← 쑈삥끼 로봇 ROS2 패키지
 │       ├── shoppinkki_interfaces/   ← 인터페이스 + Mock 구현체
 │       ├── shoppinkki_core/         ← 메인 노드 (SM + BT + HW)
@@ -209,6 +212,5 @@ ros_ws/
 | `docs/customer_ui.md` | Customer UI 화면 구성, 유저 플로우 |
 | `docs/admin_ui.md` | Admin UI 화면 구성, TCP 명령, 카메라 디버그 패널 |
 | `docs/user_requirements.md` | UR 테이블 (LCD 표시 정책 UR-21 포함) |
-| `docs/scenarios/index.md` | 시나리오 목록 SC-01~SC-82 — 상태 전환 단위 테스트 |
 | `cheatsheet.md` | SLAM·Navigation 빠른 명령 참조 |
 | `device/shoppinkki/shoppinkki_core/shoppinkki_core/config.py` | 전체 파라미터 값 (KP_ANGLE, BATTERY_THRESHOLD 등) |

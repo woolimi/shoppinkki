@@ -1,0 +1,12 @@
+# 사용법: mamba env update -n jazzy -f environment-ai.yml
+# AI 모델을 macOS에서 직접 돌릴 때만 필요. 평상시엔 서버 PC의 Docker(scripts/run_ai.sh) 사용.
+name: jazzy
+channels:
+  - conda-forge
+dependencies:
+  - pytorch        # macOS는 MPS 가속 가능
+  - torchvision
+  - opencv
+  - pip:
+      - ultralytics
+      - sentence-transformers

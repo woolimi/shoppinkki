@@ -1,0 +1,7 @@
+# Ubuntu — AI 모델을 직접(non-Docker)으로 돌릴 때만 사용
+# 사용법: pip install -r requirements-ai.txt
+ultralytics
+sentence-transformers
+torch
+torchvision
+opencv-python-headless

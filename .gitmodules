@@ -1,3 +1,15 @@
 [submodule "device/sllidar_ros2"]
 	path = device/sllidar_ros2
 	url = https://github.com/Slamtec/sllidar_ros2.git
+[submodule "device/py_trees_ros"]
+	path = device/py_trees_ros
+	url = https://github.com/splintered-reality/py_trees_ros.git
+	branch = devel
+[submodule "device/py_trees_ros_interfaces"]
+	path = device/py_trees_ros_interfaces
+	url = https://github.com/splintered-reality/py_trees_ros_interfaces.git
+	branch = devel
+[submodule "device/py_trees_ros_viewer"]
+	path = device/py_trees_ros_viewer
+	url = https://github.com/splintered-reality/py_trees_ros_viewer.git
+	branch = devel

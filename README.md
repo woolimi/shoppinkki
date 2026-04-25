@@ -45,13 +45,20 @@ shoppinkki_core (ROS2, Raspberry Pi 5)
 
 ---
 
+## 시작하기
+
+- **설치 / 환경 셋업** → [`docs/setup.md`](docs/setup.md) (macOS RoboStack / Ubuntu apt / Pi 5 트랙별)
+- **실행** → [`docs/run.md`](docs/run.md) (시뮬레이션 / 실물 로봇 모드)
+
+---
+
 ## 관련 문서
 
 | 문서 | 내용 |
 |---|---|
+| [`docs/setup.md`](docs/setup.md) | 환경 셋업 (3개 OS 트랙 + 트러블슈팅) |
+| [`docs/run.md`](docs/run.md) | 실행 절차 (시뮬 / 실물 / DB 시딩) |
 | [`CLAUDE.md`](CLAUDE.md) | 개발 가이드 (빌드·실행·아키텍처 상세) |
-| [`docs/scaffold_plan.md`](docs/scaffold_plan.md) | 패키지 구조 및 구현 계획 |
-| [`docs/scenarios/index.md`](docs/scenarios/index.md) | 시나리오 목록 (총 18개) |
 | [`docs/erd.md`](docs/erd.md) | DB 스키마 |
 | [`docs/state_machine.md`](docs/state_machine.md) | 로봇 State Machine |
 | [`cheatsheet.md`](cheatsheet.md) | SLAM·네비게이션 명령 모음 |
