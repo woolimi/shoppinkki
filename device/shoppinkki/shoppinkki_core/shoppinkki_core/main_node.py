@@ -15,7 +15,6 @@ from __future__ import annotations
 import base64
 import json
 import logging
-import math
 import os
 import threading
 import time
@@ -28,14 +27,13 @@ import numpy as np
 
 import rclpy
 import rclpy.time  # noqa: F401 — submodule 명시 (정적 분석기 경고 방지)
-import tf2_ros
-from geometry_msgs.msg import PoseWithCovarianceStamped
 from rclpy.node import Node
-from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
+from rclpy.qos import QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 from std_msgs.msg import String
 
 from .bt_runner import BTRunner
 from .cmd_handler import CmdHandler
+from .localization_manager import LocalizationManager
 from .nav_manager import NavManager
 from .config import (
     BATTERY_THRESHOLD,
@@ -222,7 +220,7 @@ class ShoppinkkiMainNode(Node):
                 self._bt_returning._set_inflation = self._nav._set_inflation
                 self.get_logger().info('BT5 RETURNING: inflation switcher connected')
             if hasattr(self._bt_returning, '_get_current_pose'):
-                self._bt_returning._get_current_pose = self._get_live_pose
+                self._bt_returning._get_current_pose = self._localization.get_live_pose
                 self.get_logger().info('BT5 RETURNING: pose callback connected')
         else:
             self.get_logger().warning('nav2_msgs not available — admin_goto disabled')
@@ -281,28 +279,8 @@ class ShoppinkkiMainNode(Node):
         self.create_timer(0.05, self._bt_tick_callback)   # 20 Hz BT tick (increased for PID responsiveness)
         self.create_timer(1.0, self._status_pub_callback)  # 1 Hz status
 
-        # ── TF 기반 위치 추적 ─────────────────
-        # AMCL amcl_pose 토픽은 TF 에러 시 발행되지 않을 수 있으므로
-        # TF lookup (map → base_footprint) 을 주 위치 소스로 사용.
-        self._tf_buffer = tf2_ros.Buffer()
-        self._tf_listener = tf2_ros.TransformListener(self._tf_buffer, self)
-        self._base_frame = f'robot_{ROBOT_ID}/base_footprint'
-
-        # AMCL amcl_pose 도 구독 (AMCL 수렴 후 더 정확한 위치 반영)
-        amcl_qos = QoSProfile(
-            depth=1,
-            reliability=QoSReliabilityPolicy.RELIABLE,
-            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
-            history=QoSHistoryPolicy.KEEP_LAST,
-        )
-        amcl_topic = f'/robot_{ROBOT_ID}/amcl_pose'
-        self.create_subscription(
-            PoseWithCovarianceStamped,
-            amcl_topic,
-            self._amcl_callback,
-            amcl_qos,
-        )
-        self.get_logger().info(f'TF + AMCL pose tracking: {amcl_topic}')
+        # ── TF + AMCL 위치 추적 ───────────────
+        self._localization = LocalizationManager(self, robot_id=ROBOT_ID)
 
         # ── 결제 구역 (BoundaryMonitor) ── REST에서 폴리곤 로드, AMCL로 진입 감지
         self._boundary_monitor: Optional[object] = None
@@ -328,10 +306,13 @@ class ShoppinkkiMainNode(Node):
         except Exception as e:
             self.get_logger().warning(f'BoundaryMonitor unavailable: {e}')
 
+        # LocalizationManager → BoundaryMonitor wiring (AMCL pose 갱신 시 호출)
+        if self._boundary_monitor is not None:
+            self._localization.on_pose_updated = (
+                lambda x, y: self._boundary_monitor.on_pose_update(x, y)
+            )
+
         # ── Internal state ────────────────────
-        self._pos_x: float = 0.0
-        self._pos_y: float = 0.0
-        self._yaw: float = 0.0
         self._battery: float = 100.0
         self._cart_items: list = []
         self.follow_disabled: bool = False
@@ -377,13 +358,6 @@ class ShoppinkkiMainNode(Node):
     def _get_forward_scan(self) -> list:
         """BT에 전달할 LiDAR 거리 리스트."""
         return self._latest_scan
-
-    def _amcl_callback(self, msg: PoseWithCovarianceStamped) -> None:
-        """AMCL 추정 위치를 내부 상태에 반영."""
-        self._pos_x = msg.pose.pose.position.x
-        self._pos_y = msg.pose.pose.position.y
-        if self._boundary_monitor is not None:
-            self._boundary_monitor.on_pose_update(self._pos_x, self._pos_y)
 
     def _emit_checkout_zone_enter(self) -> None:
         """TRACKING 상태에서 결제 구역 최초 진입 시 control_service로 WebSocket 이벤트 요청."""
@@ -441,45 +415,13 @@ class ShoppinkkiMainNode(Node):
             return
         self.bt_runner.tick()
 
-    def _get_live_pose(self) -> tuple[float, float, float]:
-        """TF에서 실시간 위치 조회 (후진 도킹용)."""
-        try:
-            t = self._tf_buffer.lookup_transform(
-                'map', self._base_frame, rclpy.time.Time())
-            x = t.transform.translation.x
-            y = t.transform.translation.y
-            q = t.transform.rotation
-            yaw = math.atan2(
-                2.0 * (q.w * q.z + q.x * q.y),
-                1.0 - 2.0 * (q.y * q.y + q.z * q.z))
-            return (x, y, yaw)
-        except Exception:
-            return (self._pos_x, self._pos_y, self._yaw)
-
-    def _update_pos_from_tf(self) -> None:
-        """TF에서 map → base_footprint 변환을 조회하여 위치·방향 갱신."""
-        try:
-            t = self._tf_buffer.lookup_transform(
-                'map', self._base_frame, rclpy.time.Time())
-            self._pos_x = t.transform.translation.x
-            self._pos_y = t.transform.translation.y
-            # quaternion → yaw
-            q = t.transform.rotation
-            siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
-            cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
-            self._yaw = math.atan2(siny_cosp, cosy_cosp)
-        except (tf2_ros.LookupException,
-                tf2_ros.ConnectivityException,
-                tf2_ros.ExtrapolationException):
-            pass  # TF 미사용 환경(실물 부팅 초기 등)에서는 amcl_pose 로 갱신
-
     def _status_pub_callback(self) -> None:
-        self._update_pos_from_tf()
+        self._localization._update_pos_from_tf()
         payload = json.dumps({
             'mode': self.sm.current_state,
-            'pos_x': self._pos_x,
-            'pos_y': self._pos_y,
-            'yaw': self._yaw,
+            'pos_x': self._localization.pos_x,
+            'pos_y': self._localization.pos_y,
+            'yaw': self._localization.yaw,
             'battery': self._battery,
             'is_locked_return': self.sm.is_locked_return,
             'follow_disabled': self.follow_disabled,
@@ -585,6 +527,25 @@ class ShoppinkkiMainNode(Node):
         self.follow_disabled = True
         self.bt_runner.follow_disabled = True
         self.sm.enter_tracking()
+
+    # ──────────────────────────────────────────
+    # Localization 임시 위임 (Phase 6에서 제거 예정 — BT 등 외부 callsite 호환용)
+    # ──────────────────────────────────────────
+
+    @property
+    def _pos_x(self) -> float:
+        return self._localization.pos_x
+
+    @property
+    def _pos_y(self) -> float:
+        return self._localization.pos_y
+
+    @property
+    def _yaw(self) -> float:
+        return self._localization.yaw
+
+    def _get_live_pose(self) -> tuple[float, float, float]:
+        return self._localization.get_live_pose()
 
     # ──────────────────────────────────────────
     # Nav2 임시 alias (Phase 6에서 제거 예정 — BT 등 외부 callsite 호환용)
