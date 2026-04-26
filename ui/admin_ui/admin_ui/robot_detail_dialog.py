@@ -17,8 +17,9 @@ import json
 import urllib.request
 import urllib.error
 import logging
+from typing import Optional
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (
     QDialog,
@@ -32,6 +33,47 @@ from PyQt5.QtWidgets import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class _CartFetchThread(QThread):
+    """REST GET을 worker thread에서 실행 → 결과를 시그널로 메인 thread에 전달.
+
+    GUI thread에서 urllib.urlopen을 직접 호출하면 최대 6초 동안 Qt event loop가
+    멎어 status 시그널이 폭주하고, macOS에서는 paint 경합으로 bus error를 유발한다.
+    """
+
+    succeeded = pyqtSignal(list)
+    failed = pyqtSignal(str)
+
+    def __init__(self, rest_base: str, robot_id: str, parent=None):
+        super().__init__(parent)
+        self._rest_base = rest_base
+        self._robot_id = robot_id
+
+    def run(self):
+        try:
+            session_url = f'{self._rest_base}/session/robot/{self._robot_id}'
+            with urllib.request.urlopen(session_url, timeout=3) as resp:
+                session_data = json.loads(resp.read())
+            cart_id = session_data.get('cart_id')
+            if cart_id is None:
+                self.failed.emit('활성 세션이 없습니다')
+                return
+
+            cart_url = f'{self._rest_base}/cart/{cart_id}'
+            with urllib.request.urlopen(cart_url, timeout=3) as resp:
+                items = json.loads(resp.read())
+
+            self.succeeded.emit(items)
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                self.failed.emit('활성 세션이 없습니다')
+            else:
+                self.failed.emit(f'오류: HTTP {e.code}')
+            logger.warning('CartFetch HTTP error: %s', e)
+        except Exception as e:
+            self.failed.emit('장바구니를 불러올 수 없습니다')
+            logger.warning('CartFetch error: %s', e)
 
 
 # ──────────────────────────────────────────────
@@ -62,6 +104,7 @@ class RobotDetailDialog(QDialog):
         super().__init__(parent)
         self._robot_id = robot_id
         self._rest_base = rest_base_url.rstrip('/')
+        self._fetch_thread: Optional[_CartFetchThread] = None
 
         self.setWindowTitle(f'Robot #{robot_id} 상세 정보')
         self.setWindowFlag(Qt.WindowType.Tool)
@@ -69,12 +112,7 @@ class RobotDetailDialog(QDialog):
         self.setMinimumHeight(340)
 
         self._build_ui()
-        # _fetch_cart는 urllib blocking 호출(최대 3초 × 2) → __init__에서 부르면
-        # 메인 Qt event loop가 막혀 그동안 쌓인 status 시그널이 dialog 뜨자마자
-        # 폭주해 paint 경합으로 macOS에서 bus error를 유발한다.
-        # 이벤트 루프 한 tick 뒤에 실행.
-        from PyQt5.QtCore import QTimer
-        QTimer.singleShot(0, self._fetch_cart)
+        self._fetch_cart()
 
     # ------------------------------------------------------------------
     # UI 구성
@@ -160,33 +198,15 @@ class RobotDetailDialog(QDialog):
     # ------------------------------------------------------------------
 
     def _fetch_cart(self):
-        """REST API로 장바구니를 조회해 테이블을 갱신한다."""
-        try:
-            # 1) active session → cart_id
-            session_url = f'{self._rest_base}/session/robot/{self._robot_id}'
-            with urllib.request.urlopen(session_url, timeout=3) as resp:
-                session_data = json.loads(resp.read())
-            cart_id = session_data.get('cart_id')
-            if cart_id is None:
-                self._show_empty('활성 세션이 없습니다')
-                return
-
-            # 2) cart items
-            cart_url = f'{self._rest_base}/cart/{cart_id}'
-            with urllib.request.urlopen(cart_url, timeout=3) as resp:
-                items = json.loads(resp.read())
-
-            self._populate_table(items)
-
-        except urllib.error.HTTPError as e:
-            if e.code == 404:
-                self._show_empty('활성 세션이 없습니다')
-            else:
-                self._show_empty(f'오류: HTTP {e.code}')
-            logger.warning('_fetch_cart HTTP error: %s', e)
-        except Exception as e:
-            self._show_empty('장바구니를 불러올 수 없습니다')
-            logger.warning('_fetch_cart error: %s', e)
+        """REST 조회를 worker thread에 위임. GUI thread는 즉시 반환."""
+        if self._fetch_thread is not None and self._fetch_thread.isRunning():
+            return  # 이미 진행 중인 새로고침이 있으면 중복 시작 안 함
+        thread = _CartFetchThread(self._rest_base, self._robot_id, parent=self)
+        thread.succeeded.connect(self._populate_table)
+        thread.failed.connect(self._show_empty)
+        thread.finished.connect(thread.deleteLater)
+        self._fetch_thread = thread
+        thread.start()
 
     def _populate_table(self, items: list):
         """아이템 목록으로 테이블을 채운다."""

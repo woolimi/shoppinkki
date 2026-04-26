@@ -385,10 +385,19 @@ def main():
     )
 
 
+_BLOCKED_REASONS = frozenset({
+    "charging", "returning", "in_use", "offline", "maintenance",
+})
+
+
 @app.route("/blocked")
 def blocked():
-    reason = request.args.get("reason", "")
+    # query string은 외부 입력이므로 화이트리스트로 정규화. 알 수 없는 값은 빈 문자열.
+    reason_raw = request.args.get("reason", "")
+    reason = reason_raw if reason_raw in _BLOCKED_REASONS else ""
     robot_id = request.args.get("robot_id", "")
+    if robot_id and robot_id not in KNOWN_ROBOT_IDS:
+        robot_id = ""
     return render_template("blocked.html", reason=reason, robot_id=robot_id)
 
 

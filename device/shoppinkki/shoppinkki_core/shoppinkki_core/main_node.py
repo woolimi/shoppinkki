@@ -165,6 +165,10 @@ class ShoppinkkiMainNode(Node):
         # ── Nav2 매니저 (NavigateToPose / ThroughPoses 클라이언트 + 모드 전환) ──
         self._nav = NavManager(self, robot_id=ROBOT_ID)
 
+        # BT5 RETURNING의 _get_current_pose가 LocalizationManager를 참조하므로
+        # 아래 wire-up 전에 LocalizationManager를 먼저 생성해야 한다.
+        self._localization = LocalizationManager(self, robot_id=ROBOT_ID)
+
         if self._nav.is_ready() or self._nav._nav2_client is not None:
             # Nav2 콜백 연결 (BT 인스턴스 속성으로 주입)
             if hasattr(self._bt_guiding, '_send_nav_goal'):
@@ -251,9 +255,6 @@ class ShoppinkkiMainNode(Node):
         self.create_timer(0.05, self._bt_tick_callback)   # 20 Hz BT tick (increased for PID responsiveness)
         self.create_timer(1.0, self._status_pub_callback)  # 1 Hz status
 
-        # ── TF + AMCL 위치 추적 ───────────────
-        self._localization = LocalizationManager(self, robot_id=ROBOT_ID)
-
         # ── 결제 구역 (BoundaryMonitor + CheckoutZoneGuard) ─────────────
         # REST에서 폴리곤 로드 → BoundaryMonitor 생성 → CheckoutZoneGuard로 래핑.
         # CheckoutZoneGuard가 LocalizationManager.on_pose_updated를 직접 wire한다.
@@ -293,12 +294,6 @@ class ShoppinkkiMainNode(Node):
         self._checkout.on_exit_blocked = self._on_checkout_exit_blocked
         self._checkout.on_reenter = self._on_checkout_reenter
 
-        # ── Internal state ────────────────────
-        # NOTE: _battery, _cart_items는 CartSessionManager가 소유한다 (Phase 3).
-        # NOTE: follow_disabled, _cam_frame/_ai_frame/_stream_frame,
-        #       _registration_active/_waiting_confirm/_tracking_grace_until,
-        #       _last_snapshot_time/_snapshot_rate_limit, _ai_event,
-        #       _cam_thread/_ai_thread/_stream_thread는 VisionManager가 소유한다 (Phase 5).
         self.hw.bind_registration_active(self._vision.is_registration_active)
 
         # ── Vision threads 시작 (camera + AI + stream) ─────────

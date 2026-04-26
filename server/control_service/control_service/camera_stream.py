@@ -36,14 +36,22 @@ YOLO_MAX_HZ = float(os.environ.get('YOLO_MAX_HZ', '5'))  # per robot
 class CameraStream:
     """Receives UDP camera frames from Pi and forwards to YOLO AI server."""
 
+    _YOLO_MAX_WORKERS = 2
+
     def __init__(self, robot_manager) -> None:
         self._rm = robot_manager
         self._frames: Dict[str, deque] = {}   # robot_id → deque of JPEG bytes
         self._lock = threading.Lock()
         self._running = False
-        self._yolo_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix='yolo')
+        self._yolo_pool = ThreadPoolExecutor(
+            max_workers=self._YOLO_MAX_WORKERS, thread_name_prefix='yolo')
+        # YOLO 워커 슬롯이 모두 차 있을 때 추가 submit이 큐에 무한 누적되지
+        # 않도록 글로벌 동시 in-flight 카운터로 가드한다.
+        self._yolo_inflight_lock = threading.Lock()
+        self._yolo_global_inflight: int = 0
         self._yolo_last_sent: Dict[str, float] = {}
         self._yolo_in_flight: Dict[str, bool] = {}
+        self._yolo_dropped: int = 0
 
     def run(self) -> None:
         """Main loop: receive UDP frames, forward to YOLO, update bbox cache."""
@@ -80,11 +88,24 @@ class CameraStream:
             if YOLO_MAX_HZ > 0:
                 now = time.monotonic()
                 min_dt = 1.0 / YOLO_MAX_HZ
-                last = self._yolo_last_sent.get(robot_id, 0.0)
-                if (now - last) >= min_dt and not self._yolo_in_flight.get(robot_id, False):
+                with self._yolo_inflight_lock:
+                    last = self._yolo_last_sent.get(robot_id, 0.0)
+                    if (now - last) < min_dt:
+                        continue
+                    if self._yolo_in_flight.get(robot_id, False):
+                        continue
+                    if self._yolo_global_inflight >= self._YOLO_MAX_WORKERS:
+                        # 모든 워커가 hung — 큐에 더 쌓지 않고 프레임 드롭.
+                        self._yolo_dropped += 1
+                        if self._yolo_dropped % 50 == 1:
+                            logger.warning(
+                                'YOLO frames dropped (workers saturated): %d',
+                                self._yolo_dropped)
+                        continue
                     self._yolo_last_sent[robot_id] = now
                     self._yolo_in_flight[robot_id] = True
-                    self._yolo_pool.submit(self._query_yolo, robot_id, frame)
+                    self._yolo_global_inflight += 1
+                self._yolo_pool.submit(self._query_yolo, robot_id, frame)
 
         sock.close()
 
@@ -123,8 +144,9 @@ class CameraStream:
             # YOLO server not available — clear bbox
             self._rm.update_bbox(robot_id, None)
         finally:
-            # allow next request
-            self._yolo_in_flight[robot_id] = False
+            with self._yolo_inflight_lock:
+                self._yolo_in_flight[robot_id] = False
+                self._yolo_global_inflight = max(0, self._yolo_global_inflight - 1)
 
     # ── MJPEG generator ───────────────────────
 

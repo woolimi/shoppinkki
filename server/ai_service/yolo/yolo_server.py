@@ -31,6 +31,7 @@ import os
 import socket
 import struct
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from typing import Optional
 
@@ -321,7 +322,8 @@ def main() -> None:
                 conf = json.load(f)
                 if conf.get('active_model'):
                     initial_path = os.path.join(MODELS_DIR, conf['active_model'])
-        except: pass
+        except Exception as e:
+            logger.warning('active_model.json load failed: %s', e)
 
     model_manager = ModelManager(initial_path)
     reid = ReIDEngine()
@@ -341,16 +343,19 @@ def main() -> None:
     server.bind((HOST, PORT))
     server.listen(32)
 
+    # accept당 daemon thread를 spawn하면 client 수만큼 thread가 누적된다.
+    # 고정 풀로 동시 추론 수를 제한해 메모리/스케줄링 폭주를 방지.
+    max_workers = int(os.environ.get('YOLO_MAX_WORKERS', '8'))
+    pool = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix='yolo-cli')
+
     try:
         while True:
             conn, addr = server.accept()
-            t = threading.Thread(
-                target=handle_client, args=(conn, addr, model_manager, reid), daemon=True
-            )
-            t.start()
+            pool.submit(handle_client, conn, addr, model_manager, reid)
     except KeyboardInterrupt:
         logger.info('서버 종료')
     finally:
+        pool.shutdown(wait=False, cancel_futures=True)
         server.close()
 
 

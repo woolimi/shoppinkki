@@ -12,10 +12,11 @@ Also provides:
 from __future__ import annotations
 
 import logging
-import math
 import urllib.request
 import json as _json
 from typing import Optional
+
+from shoppinkki_core.geometry import yaw_to_quat
 
 logger = logging.getLogger(__name__)
 
@@ -142,11 +143,9 @@ def _make_pose(x: float, y: float, theta: float, stamp):
     pose.pose.position.x = x
     pose.pose.position.y = y
     pose.pose.position.z = 0.0
-    # Quaternion from yaw
-    qz = math.sin(theta / 2.0)
-    qw = math.cos(theta / 2.0)
-    pose.pose.orientation.x = 0.0
-    pose.pose.orientation.y = 0.0
+    qx, qy, qz, qw = yaw_to_quat(theta)
+    pose.pose.orientation.x = qx
+    pose.pose.orientation.y = qy
     pose.pose.orientation.z = qz
     pose.pose.orientation.w = qw
     return pose

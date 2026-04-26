@@ -21,7 +21,11 @@ from typing import Any, Callable, Dict, List, Optional
 
 from . import db
 from .fleet_router import FleetRouter
-from shoppinkki_core.config import ROBOT_TIMEOUT_SEC, WAITING_TIMEOUT
+from shoppinkki_core.config import (
+    CHECKOUT_AUTO_RETURN_FROM,
+    ROBOT_TIMEOUT_SEC,
+    WAITING_TIMEOUT,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -281,7 +285,7 @@ class RobotManager:
             with self._lock:
                 st = self._states.get(robot_id)
                 cached_mode = st.mode if st is not None else 'OFFLINE'
-            if cached_mode not in ('TRACKING', 'TRACKING_CHECKOUT'):
+            if cached_mode not in CHECKOUT_AUTO_RETURN_FROM:
                 logger.info(
                     'checkout_zone_enter: empty cart, skip auto-return '
                     '(robot=%s mode=%s)',
@@ -291,14 +295,17 @@ class RobotManager:
 
             _CHECKOUT_AUTO_RETURN_DEBOUNCE_S = 5.0
             now = time.monotonic()
-            last = self._last_checkout_auto_return.get(robot_id, 0.0)
-            if now - last < _CHECKOUT_AUTO_RETURN_DEBOUNCE_S:
-                logger.debug(
-                    'checkout_zone_enter: auto-return debounced robot=%s',
-                    robot_id,
-                )
-                return
-            self._last_checkout_auto_return[robot_id] = now
+            # check-and-set은 lock으로 보호 — 두 pose update가 거의 동시에 도착하면
+            # 자동 RETURNING이 두 번 발사될 수 있다.
+            with self._lock:
+                last = self._last_checkout_auto_return.get(robot_id, 0.0)
+                if now - last < _CHECKOUT_AUTO_RETURN_DEBOUNCE_S:
+                    logger.debug(
+                        'checkout_zone_enter: auto-return debounced robot=%s',
+                        robot_id,
+                    )
+                    return
+                self._last_checkout_auto_return[robot_id] = now
 
             user_id = session.get('user_id')
             self._relay_to_pi(robot_id, {'cmd': 'mode', 'value': 'RETURNING'})
@@ -385,141 +392,153 @@ class RobotManager:
     def handle_admin_cmd(self, robot_id: str, payload: dict) -> None:
         """Route admin commands to Pi or handle locally."""
         cmd = payload.get('cmd')
-
-        if cmd == 'admin_goto':
-            # 이동 명령: 그래프 라우팅을 거치지 않고 Nav2로 직행.
-            # Only allowed in IDLE state.
-            with self._lock:
-                state = self._get_or_create(robot_id)
-                if state.mode != 'IDLE':
-                    self._push_admin({
-                        'type': 'admin_goto_rejected',
-                        'robot_id': robot_id,
-                        'reason': f'Robot is in {state.mode}, not IDLE',
-                    })
-                    return
-            gx = payload.get('x')
-            gy = payload.get('y')
-            if gx is not None and gy is not None:
-                with self._lock:
-                    state.dest_x = float(gx)
-                    state.dest_y = float(gy)
-                    # 직선 가시화: 현재 위치에서 목적지까지.
-                    state.path = [
-                        {'x': state.pos_x, 'y': state.pos_y},
-                        {'x': float(gx), 'y': float(gy)},
-                    ]
-                self._router.release(robot_id)
-                self._push_status(robot_id, state)
+        handler = self._ADMIN_CMD_HANDLERS.get(cmd)
+        if handler is not None:
+            handler(self, robot_id, payload)
+        elif cmd in ('mode', 'resume_tracking', 'start_session'):
             self._relay_to_pi(robot_id, payload)
+        else:
+            logger.warning('Unknown admin cmd=%s', cmd)
 
-        elif cmd == 'init_pose':
-            # Only allowed in CHARGING or IDLE state
-            with self._lock:
-                state = self._get_or_create(robot_id)
-                if state.mode not in ('CHARGING', 'IDLE'):
-                    self._push_admin({
-                        'type': 'init_pose_rejected',
-                        'robot_id': robot_id,
-                        'reason': f'Robot is in {state.mode}, not CHARGING/IDLE',
-                    })
-                    return
-            if self.publish_init_pose:
-                self.publish_init_pose(robot_id)
-                logger.info('init_pose published for robot=%s', robot_id)
-            else:
-                logger.warning('publish_init_pose not wired; init_pose dropped for robot=%s',
-                               robot_id)
+    # ── per-command handlers (admin) ──────────
 
-        elif cmd == 'admin_position_adjustment':
-            # Position adjustment from Admin UI map click.
-            # - Simulation: Gazebo pose + AMCL sync
-            # - Real robot: AMCL-only relocalization (no physical model move)
-            x = float(payload.get('x', 0.0))
-            y = float(payload.get('y', 0.0))
-            theta = float(payload.get('theta', 0.0))
-            ok = False
-            apply_mode = ''
-
-            # 1) Try simulation path first (Gazebo SetEntityPose + AMCL sync in ros_node)
-            sim_adjust = self.adjust_position_in_sim
-            if sim_adjust:
-                try:
-                    ok = bool(sim_adjust(robot_id, x, y, theta))
-                    if ok:
-                        apply_mode = 'sim_pose_and_amcl'
-                except Exception:
-                    logger.exception('admin_position_adjustment failed (robot=%s)', robot_id)
-
-            # 2) Fallback for real robot (or when Gazebo bridge is unavailable):
-            #    publish map-frame initialpose only.
-            if not ok and self.publish_initialpose_at:
-                try:
-                    self.publish_initialpose_at(robot_id, x, y, theta)
-                    ok = True
-                    apply_mode = 'amcl_only'
-                except Exception:
-                    logger.exception(
-                        'admin_position_adjustment fallback(initialpose) failed (robot=%s)',
-                        robot_id,
-                    )
-
-            if not ok:
-                self._push_admin({
-                    'type': 'position_adjustment_rejected',
-                    'robot_id': robot_id,
-                    'reason': 'position adjustment failed',
-                })
-            else:
-                # 즉시 반영: 다음 /status 수신 전에도 UI가 위치를 갱신할 수 있도록
-                # 캐시 좌표를 먼저 업데이트하고 status를 push한다.
-                with self._lock:
-                    state = self._get_or_create(robot_id)
-                    state.pos_x = x
-                    state.pos_y = y
-                    state.yaw = theta
-                    state.last_seen = datetime.utcnow()
-                self._push_status(robot_id, state)
-                self._push_admin({
-                    'type': 'position_adjustment_done',
-                    'robot_id': robot_id,
-                    'x': x, 'y': y, 'theta': theta,
-                    'apply_mode': apply_mode,
-                })
-
-        elif cmd == 'navigate_to':
-            # admin_ui의 "안내 이동" — IDLE에서만 허용. 나머지 라우팅은 handle_web_cmd와 동일.
-            with self._lock:
-                mode = self._get_or_create(robot_id).mode
-            if mode != 'IDLE':
+    def _handle_admin_goto(self, robot_id: str, payload: dict) -> None:
+        # 이동 명령: 그래프 라우팅을 거치지 않고 Nav2로 직행. IDLE에서만 허용.
+        with self._lock:
+            state = self._get_or_create(robot_id)
+            if state.mode != 'IDLE':
                 self._push_admin({
                     'type': 'admin_goto_rejected',
                     'robot_id': robot_id,
-                    'reason': f'Robot is in {mode}, not IDLE',
+                    'reason': f'Robot is in {state.mode}, not IDLE',
                 })
                 return
-            self.handle_web_cmd(robot_id, payload)
+        gx = payload.get('x')
+        gy = payload.get('y')
+        if gx is not None and gy is not None:
+            with self._lock:
+                state.dest_x = float(gx)
+                state.dest_y = float(gy)
+                # 직선 가시화: 현재 위치에서 목적지까지.
+                state.path = [
+                    {'x': state.pos_x, 'y': state.pos_y},
+                    {'x': float(gx), 'y': float(gy)},
+                ]
+            self._router.release(robot_id)
+            self._push_status(robot_id, state)
+        self._relay_to_pi(robot_id, payload)
 
-        elif cmd in ('mode', 'resume_tracking', 'start_session'):
-            self._relay_to_pi(robot_id, payload)
-
-        elif cmd in ('force_terminate', 'staff_resolved'):
-            # 세션을 강제 종료하거나 잠금 해제 처리 시, 다음 로그인에 장바구니가 남지 않도록 정리한다.
-            self._clear_active_cart(robot_id, reason=cmd)
-            # staff_resolved: also end the active session so the next login starts clean.
-            if cmd == 'staff_resolved':
-                try:
-                    session = db.get_active_session_by_robot(robot_id)
-                    if session:
-                        db.end_session(session['session_id'])
-                    # Cache should reflect DB cleanup immediately (Pi status may lag).
-                    self.set_cached_active_user_id(robot_id, None)
-                except Exception:
-                    logger.exception('staff_resolved: failed to end session (robot=%s)', robot_id)
-            self._relay_to_pi(robot_id, payload)
-
+    def _handle_init_pose(self, robot_id: str, payload: dict) -> None:
+        # CHARGING / IDLE 에서만 허용
+        with self._lock:
+            state = self._get_or_create(robot_id)
+            if state.mode not in ('CHARGING', 'IDLE'):
+                self._push_admin({
+                    'type': 'init_pose_rejected',
+                    'robot_id': robot_id,
+                    'reason': f'Robot is in {state.mode}, not CHARGING/IDLE',
+                })
+                return
+        if self.publish_init_pose:
+            self.publish_init_pose(robot_id)
+            logger.info('init_pose published for robot=%s', robot_id)
         else:
-            logger.warning('Unknown admin cmd=%s', cmd)
+            logger.warning('publish_init_pose not wired; init_pose dropped for robot=%s',
+                           robot_id)
+
+    def _handle_position_adjustment(self, robot_id: str, payload: dict) -> None:
+        # Position adjustment from Admin UI map click.
+        # - 시뮬: Gazebo SetEntityPose + AMCL 동기화
+        # - 실 로봇: AMCL-only relocalization (모델 위치는 그대로)
+        x = float(payload.get('x', 0.0))
+        y = float(payload.get('y', 0.0))
+        theta = float(payload.get('theta', 0.0))
+        ok, apply_mode = self._apply_position_adjustment(robot_id, x, y, theta)
+
+        if not ok:
+            self._push_admin({
+                'type': 'position_adjustment_rejected',
+                'robot_id': robot_id,
+                'reason': 'position adjustment failed',
+            })
+            return
+
+        # 즉시 반영: 다음 /status 수신 전에도 UI가 위치를 갱신할 수 있도록 캐시 push.
+        with self._lock:
+            state = self._get_or_create(robot_id)
+            state.pos_x = x
+            state.pos_y = y
+            state.yaw = theta
+            state.last_seen = datetime.utcnow()
+        self._push_status(robot_id, state)
+        self._push_admin({
+            'type': 'position_adjustment_done',
+            'robot_id': robot_id,
+            'x': x, 'y': y, 'theta': theta,
+            'apply_mode': apply_mode,
+        })
+
+    def _apply_position_adjustment(
+        self, robot_id: str, x: float, y: float, theta: float,
+    ) -> tuple[bool, str]:
+        """시뮬 우선 → 실패 시 실 로봇 fallback. (성공여부, apply_mode) 반환."""
+        sim_adjust = self.adjust_position_in_sim
+        if sim_adjust:
+            try:
+                if bool(sim_adjust(robot_id, x, y, theta)):
+                    return True, 'sim_pose_and_amcl'
+            except Exception:
+                logger.exception('admin_position_adjustment failed (robot=%s)', robot_id)
+
+        if self.publish_initialpose_at:
+            try:
+                self.publish_initialpose_at(robot_id, x, y, theta)
+                return True, 'amcl_only'
+            except Exception:
+                logger.exception(
+                    'admin_position_adjustment fallback(initialpose) failed (robot=%s)',
+                    robot_id,
+                )
+        return False, ''
+
+    def _handle_admin_navigate_to(self, robot_id: str, payload: dict) -> None:
+        # admin_ui의 "안내 이동" — IDLE에서만 허용. 나머지 라우팅은 handle_web_cmd와 동일.
+        with self._lock:
+            mode = self._get_or_create(robot_id).mode
+        if mode != 'IDLE':
+            self._push_admin({
+                'type': 'admin_goto_rejected',
+                'robot_id': robot_id,
+                'reason': f'Robot is in {mode}, not IDLE',
+            })
+            return
+        self.handle_web_cmd(robot_id, payload)
+
+    def _handle_force_terminate_or_staff_resolved(
+        self, robot_id: str, payload: dict,
+    ) -> None:
+        # 세션 강제 종료/잠금 해제 시 다음 로그인에 장바구니가 남지 않도록 정리.
+        cmd = payload.get('cmd')
+        self._clear_active_cart(robot_id, reason=cmd)
+        if cmd == 'staff_resolved':
+            try:
+                session = db.get_active_session_by_robot(robot_id)
+                if session:
+                    db.end_session(session['session_id'])
+                # Cache는 즉시 DB 정리를 반영 (Pi status는 지연 가능).
+                self.set_cached_active_user_id(robot_id, None)
+            except Exception:
+                logger.exception('staff_resolved: failed to end session (robot=%s)', robot_id)
+        self._relay_to_pi(robot_id, payload)
+
+    _ADMIN_CMD_HANDLERS: dict = {
+        'admin_goto': _handle_admin_goto,
+        'init_pose': _handle_init_pose,
+        'admin_position_adjustment': _handle_position_adjustment,
+        'navigate_to': _handle_admin_navigate_to,
+        'force_terminate': _handle_force_terminate_or_staff_resolved,
+        'staff_resolved': _handle_force_terminate_or_staff_resolved,
+    }
 
     # ──────────────────────────────────────────
     # Commands from customer_web (channel C, via tcp_server or REST)
@@ -1331,7 +1350,8 @@ class RobotManager:
 
         # Stagger: 다른 로봇이 최근에 dispatch됐고 가까이 있으면 대기
         now_ts = time.monotonic()
-        for other_id, last_ts in self._last_navigate_dispatch.items():
+        # iteration 중 다른 thread가 dispatch dict을 변경하면 RuntimeError가 난다.
+        for other_id, last_ts in list(self._last_navigate_dispatch.items()):
             if other_id == robot_id:
                 continue
             if now_ts - last_ts > self._STAGGER_WINDOW_S:
@@ -1488,18 +1508,18 @@ class RobotManager:
             'bbox': state.bbox,
             'path': state.path,
         }
-        others: List[dict] = []
+        # lock 잡은 채로 dict 빌드를 하면 다른 Flask 쓰레드를 블로킹한다 — 스냅샷만 잡고
+        # 나머지 변환은 lock 밖에서 수행.
         with self._lock:
-            for rid, st in self._states.items():
-                if rid == robot_id:
-                    continue
-                others.append({
-                    'robot_id': rid,
-                    'pos_x': st.pos_x,
-                    'pos_y': st.pos_y,
-                    'mode': st.mode,
-                })
-        web['other_robots'] = others
+            snapshot = [
+                (rid, st.pos_x, st.pos_y, st.mode)
+                for rid, st in self._states.items()
+                if rid != robot_id
+            ]
+        web['other_robots'] = [
+            {'robot_id': rid, 'pos_x': px, 'pos_y': py, 'mode': mode}
+            for rid, px, py, mode in snapshot
+        ]
         return web
 
     def _push_status(self, robot_id: str, state: RobotState) -> None:

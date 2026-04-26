@@ -217,29 +217,35 @@ class RobotCard(QFrame):
     def _on_position_adjustment(self):
         """[위치 재조정] 버튼 클릭 — 맵 클릭 대기 모드 진입/취소."""
         self.set_goto_pending(False)
+
         if self._position_adjustment_pending:
             self._position_adjustment_pending = False
             self._btn_position_adjustment.setText(_POSITION_ADJUSTMENT_BTN_LABEL)
             self.position_adjustment_mode_activated.emit('')
-        else:
-            mode = self._current_state.get('mode', 'OFFLINE')
-            if mode in ('TRACKING', 'TRACKING_CHECKOUT'):
-                reply = QMessageBox.question(
-                    self,
-                    '위치 재조정 (추종·쇼핑 중)',
-                    f'Robot #{self._robot_id} — 현재 상태: {mode}\n\n'
-                    '맵에서 선택한 좌표로 로컬라이제이션을 바꿉니다 '
-                    '(시뮬: Gazebo 자세 + AMCL, 실물: initialpose). '
-                    '이후에도 이 추정이 유지됩니다.\n\n'
-                    '추종·Nav2·장애물 회피와 어긋날 수 있습니다. 계속하시겠습니까?',
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No,
-                )
-                if reply != QMessageBox.StandardButton.Yes:
-                    return
-            self._position_adjustment_pending = True
-            self._btn_position_adjustment.setText('취소')
-            self.position_adjustment_mode_activated.emit(self._robot_id)
+            return
+
+        mode = self._current_state.get('mode', 'OFFLINE')
+        if mode in ('TRACKING', 'TRACKING_CHECKOUT') and not self._confirm_position_adjustment(mode):
+            return
+
+        self._position_adjustment_pending = True
+        self._btn_position_adjustment.setText('취소')
+        self.position_adjustment_mode_activated.emit(self._robot_id)
+
+    def _confirm_position_adjustment(self, mode: str) -> bool:
+        """추종·쇼핑 중 위치 재조정 확인 다이얼로그. Yes 응답 시 True."""
+        reply = QMessageBox.question(
+            self,
+            '위치 재조정 (추종·쇼핑 중)',
+            f'Robot #{self._robot_id} — 현재 상태: {mode}\n\n'
+            '맵에서 선택한 좌표로 로컬라이제이션을 바꿉니다 '
+            '(시뮬: Gazebo 자세 + AMCL, 실물: initialpose). '
+            '이후에도 이 추정이 유지됩니다.\n\n'
+            '추종·Nav2·장애물 회피와 어긋날 수 있습니다. 계속하시겠습니까?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return reply == QMessageBox.StandardButton.Yes
 
     def update_state(self, state: dict):
         """상태 딕셔너리로 카드 갱신."""

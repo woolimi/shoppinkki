@@ -28,6 +28,8 @@ import numpy as np
 import rclpy
 from std_msgs.msg import String
 
+from .config import CAMERA_ACTIVE_MODES, RobotMode
+
 if TYPE_CHECKING:
     import rclpy.node
     from .hw_controller import HWController
@@ -56,7 +58,12 @@ class VisionManager:
     단일 self._lock으로 frame buffer + 등록 flag 보호.
     """
 
-    _CAM_STATES = {'IDLE', 'TRACKING', 'TRACKING_CHECKOUT', 'SEARCHING'}
+    _CAM_STATES = CAMERA_ACTIVE_MODES
+    _LCD_FEED_STATES = frozenset({
+        RobotMode.TRACKING, RobotMode.TRACKING_CHECKOUT, RobotMode.SEARCHING,
+    })
+    _REG_FRAME_INTERVAL = 0.083  # ~12 FPS — blur + SPI 부담을 감안한 등록 모드 업데이트 주기
+    _LCD_FRAME_INTERVAL = 0.040  # ~25 FPS — 평상시 LCD 카메라 피드 업데이트 주기
 
     def __init__(
         self,
@@ -76,6 +83,10 @@ class VisionManager:
         self._cam_frame: Optional[np.ndarray] = None
         self._ai_frame: Optional[np.ndarray] = None
         self._stream_frame: Optional[bytes] = None
+        # AI thread가 읽는 동안 카메라 thread가 덮어쓰지 않도록 더블 버퍼.
+        # Pi 5에서 30Hz × ~900KB frame.copy() = ~27MB/s 할당 churn을 제거한다.
+        self._ai_frame_buffers: list[Optional[np.ndarray]] = [None, None]
+        self._ai_frame_buf_idx: int = 0
 
         # 등록 상태 (lock 보호)
         self._registration_active: bool = False
@@ -343,7 +354,17 @@ class VisionManager:
                 continue
 
             # ── Shared frame state 갱신 (lock) ──
-            ai_frame_copy = frame.copy() if frame is not None else None
+            # 더블 버퍼 회전: AI thread가 직전 버퍼를 들고 있어도 다른 슬롯에 쓴다.
+            ai_frame_copy: Optional[np.ndarray] = None
+            if frame is not None:
+                idx = 1 - self._ai_frame_buf_idx
+                buf = self._ai_frame_buffers[idx]
+                if buf is None or buf.shape != frame.shape or buf.dtype != frame.dtype:
+                    buf = np.empty_like(frame)
+                    self._ai_frame_buffers[idx] = buf
+                np.copyto(buf, frame)
+                self._ai_frame_buf_idx = idx
+                ai_frame_copy = buf
             with self._lock:
                 self._cam_frame = frame
                 self._ai_frame = ai_frame_copy
@@ -353,42 +374,7 @@ class VisionManager:
             self._ai_event.set()
 
             # ── LCD 업데이트 (lock 밖, HW I/O) ──
-            show_debug = self.doll_detector is not None and getattr(
-                self.doll_detector, 'show_all_detections', False)
-
-            connected = self.doll_detector.is_connected() if self.doll_detector else False
-            det_count = self.doll_detector.get_latest_count() if self.doll_detector else 0
-
-            # [UNSTOPPABLE DISPLAY] Registration check FIRST — always wins over state
-            if is_registration:
-                # Rate-limit to ~12fps during registration (blur is CPU-heavy, SPI needs time)
-                now = time.monotonic()
-                if (now - self._last_reg_frame_t) >= 0.083:
-                    self._last_reg_frame_t = now
-                    self._hw.display_frame(
-                        frame, connected=connected, det_count=det_count,
-                        is_registration=True, mirror=True)
-            else:
-                # Normal mode: Throttle LCD updates to ~25 Hz (was 15 Hz) for faster visual feedback
-                now = time.monotonic()
-                if (now - self._last_lcd_update_t) >= 0.040:
-                    self._last_lcd_update_t = now
-                    if state in ('TRACKING', 'TRACKING_CHECKOUT', 'SEARCHING'):
-                        det = self.doll_detector.get_latest() if self.doll_detector else None
-                        if det:
-                            self._hw.draw_detection(frame, det)
-                        self._hw.display_frame(
-                            frame, connected=connected, det_count=det_count, mirror=True)
-                    elif show_debug:
-                        det = self.doll_detector.get_latest() if self.doll_detector else None
-                        if det:
-                            self._hw.draw_detection(frame, det)
-                        self._hw.display_frame(
-                            frame, connected=connected, det_count=det_count, mirror=True)
-                    else:
-                        # IDLE, WAITING, GUIDING 등의 상태에서는 상태 텍스트/QR 코드가
-                        # LCD 전체를 차지해야 하므로 카메라 피드로 덮어쓰지 않음.
-                        pass
+            self._update_lcd_feed(frame, state, is_registration)
 
             # ── 스트림용 JPEG 인코딩 (lock 밖, CPU heavy) ──
             _, jpeg = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 60])
@@ -398,6 +384,43 @@ class VisionManager:
 
         if cap is not None:
             _close_camera(cap)
+
+    def _update_lcd_feed(self, frame, state: str, is_registration: bool) -> None:
+        """카메라 프레임을 상태에 맞춰 LCD에 표시한다.
+
+        등록 모드는 12FPS, 일반 모드는 25FPS로 throttle. 일반 모드에서는 추종/탐색 또는
+        debug 표시 상태에서만 카메라 피드를 LCD에 덮어쓴다 — IDLE/WAITING/GUIDING에서는
+        상태 텍스트/QR이 LCD 전체를 차지하므로 건드리지 않는다.
+        """
+        connected = self.doll_detector.is_connected() if self.doll_detector else False
+        det_count = self.doll_detector.get_latest_count() if self.doll_detector else 0
+
+        if is_registration:
+            now = time.monotonic()
+            if (now - self._last_reg_frame_t) < self._REG_FRAME_INTERVAL:
+                return
+            self._last_reg_frame_t = now
+            self._hw.display_frame(
+                frame, connected=connected, det_count=det_count,
+                is_registration=True, mirror=True)
+            return
+
+        now = time.monotonic()
+        if (now - self._last_lcd_update_t) < self._LCD_FRAME_INTERVAL:
+            return
+
+        show_debug = self.doll_detector is not None and getattr(
+            self.doll_detector, 'show_all_detections', False)
+        should_display = state in self._LCD_FEED_STATES or show_debug
+        if not should_display:
+            return  # IDLE/WAITING/GUIDING 등은 상태 텍스트/QR이 점유
+
+        self._last_lcd_update_t = now
+        det = self.doll_detector.get_latest() if self.doll_detector else None
+        if det:
+            self._hw.draw_detection(frame, det)
+        self._hw.display_frame(
+            frame, connected=connected, det_count=det_count, mirror=True)
 
     def _ai_loop(self) -> None:
         """AI 연산을 수행하는 백그라운드 스레드.

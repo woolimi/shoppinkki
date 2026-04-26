@@ -664,6 +664,9 @@ class MainWindow(QMainWindow):
             dlg.activateWindow()
             return
         dlg = RobotDetailDialog(robot_id, self._rest_base, parent=self)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        # 다이얼로그가 닫히면 캐시에서 제거 — 그렇지 않으면 widget 객체가 영구 보관된다.
+        dlg.destroyed.connect(lambda _obj, rid=robot_id: self._detail_dialogs.pop(rid, None))
         if robot_id in self._robot_states:
             dlg.update_state(self._robot_states[robot_id])
         self._detail_dialogs[robot_id] = dlg

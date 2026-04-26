@@ -261,16 +261,7 @@ class HWController:
                 self._lcd.img_show(img_array)
             
         except Exception as e:
-            # PATH REVEALER: Find out exactly which file is causing the crash
-            import traceback
-            logger.error("!!! NUCLEAR SHIELD TRACEBACK !!!")
-            logger.error(traceback.format_exc())
-            try:
-                import pinky_emotion.pinky_lcd as lcd
-                logger.error(f"IMPOSTER PATH: {lcd.__file__}")
-            except Exception:
-                pass
-            logger.error(f"NUCLEAR SHIELD: LCD show blocked a crash: {e}")
+            logger.exception('LCD show failed: %s', e)
 
     def bind_registration_active(self, registration_active_ref) -> None:
         """Bind a callable that returns current registration-active flag."""
@@ -280,39 +271,25 @@ class HWController:
         """인형 등록 시 세로로 긴 타원형만 선명하게, 주변은 블러 처리된 UI (Ultra-High Speed Caching)."""
         try:
             h, w = image.shape[:2]
-            
-            # Pre-cache the mask once for the session (Saves 5-10ms per frame)
+
             if self._reg_mask is None or self._reg_mask.shape[:2] != (h, w):
                 mask = np.zeros((h, w), dtype=np.uint8)
                 center = (w // 2, h // 2)
-                # Bigger guide ellipse for easier registration alignment
                 cv2.ellipse(mask, center, _REG_ELLIPSE_AXES, 0, 0, 360, 255, -1)
                 self._reg_mask = mask
                 self._reg_mask_inv = cv2.bitwise_not(mask)
 
-            # High-Speed Bitwise Blending (Zero Lagrangian lag)
             blurred = cv2.GaussianBlur(image, (5, 5), 0)
-            if self._reg_mask is None or self._reg_mask.shape[:2] != image.shape[:2]: return image
             res_fg = cv2.bitwise_and(image, image, mask=self._reg_mask)
             res_bg = cv2.bitwise_and(blurred, blurred, mask=self._reg_mask_inv)
             result = cv2.add(res_fg, res_bg)
-            
-            # 4. Final Guide Ring
+
             cv2.ellipse(result, (w // 2, h // 2), _REG_ELLIPSE_AXES, 0, 0, 360, (255, 255, 255), 1, cv2.LINE_AA)
-            
+
             return result
         except Exception as e:
             logger.warning(f"Registration UI failed: {e}")
             return image
-        
-        # Fallback: keep publishing for the monitor/debugging
-        if self._lcd_pub is not None:
-            try:
-                cv_img = np.array(target_landscape)
-                bgr_img = cv2.cvtColor(cv_img, cv2.COLOR_RGB2BGR)
-                msg = self._bridge.cv2_to_imgmsg(bgr_img, encoding='bgr8')
-                self._lcd_pub.publish(msg)
-            except Exception: pass
 
     def display_state_text(self, state: str) -> None:
         """상태 텍스트를 PIL로 LCD에 렌더링."""

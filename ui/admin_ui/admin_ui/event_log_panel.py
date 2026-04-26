@@ -113,7 +113,8 @@ class EventLogPanel(QWidget):
         layout.addWidget(self._table)
 
     def add_event(self, robot_id: str, event_type: str, detail: str, timestamp: str):
-        """이벤트 추가 (최신 상단 삽입)."""
+        """이벤트 추가 (최신 상단 삽입). 매번 테이블 전체를 다시 그리지 않고
+        단일 행만 prepend한다 — 200건 누적 후 add_event마다의 비용이 O(1)."""
         row_data = {
             'robot_id': robot_id,
             'event_type': event_type,
@@ -123,7 +124,16 @@ class EventLogPanel(QWidget):
         self._all_rows.insert(0, row_data)
         if len(self._all_rows) > MAX_ROWS:
             self._all_rows = self._all_rows[:MAX_ROWS]
-        self._rebuild_table()
+
+        allowed = _FILTER_GROUPS.get(self._current_filter)
+        if allowed is not None and event_type not in allowed:
+            return  # 현재 필터에 안 맞으면 캐시에만 두고 테이블 변경 없음
+
+        self._table.insertRow(0)
+        self._set_row_items(0, row_data)
+        # 표시 행도 MAX_ROWS로 cap
+        while self._table.rowCount() > MAX_ROWS:
+            self._table.removeRow(self._table.rowCount() - 1)
 
     def load_initial(self, events: list):
         """초기 이벤트 목록 일괄 로드."""
@@ -143,6 +153,22 @@ class EventLogPanel(QWidget):
             btn.setChecked(lbl == filter_type)
         self._rebuild_table()
 
+    def _set_row_items(self, table_row: int, row_data: dict) -> None:
+        """단일 테이블 행 셀 설정 — _rebuild_table과 add_event가 공유."""
+        event_type = row_data['event_type']
+        bg = QBrush(QColor(_EVENT_COLORS.get(event_type, '#ffffff')))
+        fg = QBrush(QColor('#222222'))
+        items = [
+            QTableWidgetItem(row_data['timestamp']),
+            QTableWidgetItem(f"Robot #{row_data['robot_id']}"),
+            QTableWidgetItem(event_type),
+            QTableWidgetItem(row_data['detail']),
+        ]
+        for col, item in enumerate(items):
+            item.setBackground(bg)
+            item.setForeground(fg)
+            self._table.setItem(table_row, col, item)
+
     def _rebuild_table(self):
         allowed = _FILTER_GROUPS.get(self._current_filter)
         rows = self._all_rows
@@ -151,20 +177,7 @@ class EventLogPanel(QWidget):
 
         self._table.setRowCount(len(rows))
         for i, row_data in enumerate(rows):
-            event_type = row_data['event_type']
-            bg_hex = _EVENT_COLORS.get(event_type, '#ffffff')
-            bg = QBrush(QColor(bg_hex))
-
-            items = [
-                QTableWidgetItem(row_data['timestamp']),
-                QTableWidgetItem(f"Robot #{row_data['robot_id']}"),
-                QTableWidgetItem(event_type),
-                QTableWidgetItem(row_data['detail']),
-            ]
-            for col, item in enumerate(items):
-                item.setBackground(bg)
-                item.setForeground(QBrush(QColor('#222222')))
-                self._table.setItem(i, col, item)
+            self._set_row_items(i, row_data)
 
     def _on_cell_clicked(self, row: int, col: int):
         robot_item = self._table.item(row, 1)

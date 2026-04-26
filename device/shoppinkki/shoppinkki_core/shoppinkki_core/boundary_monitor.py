@@ -103,6 +103,20 @@ class BoundaryMonitor:
     def set_active(self, active: bool) -> None:
         self._active = active
 
+    def set_callbacks(
+        self,
+        on_enter: Optional[Callable[[], None]] = None,
+        on_exit_blocked: Optional[Callable[[], None]] = None,
+        on_reenter: Optional[Callable[[], None]] = None,
+    ) -> None:
+        """체크아웃 zone 콜백을 일괄 재배선. 미지정(None) 인자는 변경하지 않는다."""
+        if on_enter is not None:
+            self._on_checkout_enter = on_enter
+        if on_exit_blocked is not None:
+            self._on_checkout_exit_blocked = on_exit_blocked
+        if on_reenter is not None:
+            self._on_checkout_reenter = on_reenter
+
     # ── Pose update (called by ROS sub or directly in tests) ──
 
     def on_pose_update(self, x: float, y: float) -> None:
@@ -137,14 +151,28 @@ class BoundaryMonitor:
     def _setup_ros_subscription(self, node) -> None:
         try:
             from geometry_msgs.msg import PoseWithCovarianceStamped
+            from rclpy.qos import (
+                QoSDurabilityPolicy,
+                QoSHistoryPolicy,
+                QoSProfile,
+                QoSReliabilityPolicy,
+            )
 
             def _pose_cb(msg):
                 x = msg.pose.pose.position.x
                 y = msg.pose.pose.position.y
                 self.on_pose_update(x, y)
 
-            node.create_subscription(
-                PoseWithCovarianceStamped, 'amcl_pose', _pose_cb, 10)
+            # AMCL latches the last pose with TRANSIENT_LOCAL + RELIABLE; subscriber
+            # must match or messages won't arrive at all.
+            amcl_qos = QoSProfile(
+                depth=1,
+                reliability=QoSReliabilityPolicy.RELIABLE,
+                durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+                history=QoSHistoryPolicy.KEEP_LAST,
+            )
+            self._amcl_sub = node.create_subscription(
+                PoseWithCovarianceStamped, 'amcl_pose', _pose_cb, amcl_qos)
             logger.info('BoundaryMonitor: subscribed to amcl_pose')
         except Exception as e:
             logger.warning('BoundaryMonitor: ROS subscription failed: %s', e)

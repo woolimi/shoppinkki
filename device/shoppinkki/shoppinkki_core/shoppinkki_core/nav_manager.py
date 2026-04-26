@@ -7,14 +7,17 @@ main_node에서 분리된 Nav2 인터페이스. NavigateToPose/ThroughPoses 동�
 from __future__ import annotations
 
 import logging
-import math
-import subprocess
 import threading
 from typing import TYPE_CHECKING, Optional
 
 import rclpy
 import rclpy.time
+from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseStamped
+from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
+from rcl_interfaces.srv import SetParameters
+
+from .geometry import yaw_to_quat
 
 if TYPE_CHECKING:
     import rclpy.node
@@ -44,6 +47,7 @@ class NavManager:
         self._current_nav2_mode: Optional[str] = None
         self._active_goal_handle = None
         self._active_through_goal_handle = None
+        self._param_clients: dict[str, 'rclpy.client.Client'] = {}
 
         self._nav2_client = None
         self._nav2_through_client = None
@@ -103,12 +107,14 @@ class NavManager:
         self._set_nav2_mode(mode)
         goal_msg = self._create_nav_goal_msg(x, y, theta)
 
+        def _clear_handle(_future):
+            self._active_goal_handle = None
+
         def _store_handle(future):
             gh = future.result()
             if gh is not None and gh.accepted:
                 self._active_goal_handle = gh
-                gh.get_result_async().add_done_callback(
-                    lambda _f: setattr(self, '_active_goal_handle', None))
+                gh.get_result_async().add_done_callback(_clear_handle)
 
         self._nav2_client.send_goal_async(goal_msg).add_done_callback(_store_handle)
         self._node.get_logger().info(
@@ -136,6 +142,25 @@ class NavManager:
     # 내부 — 파라미터 전환
     # ──────────────────────────────────────────
 
+    def _get_param_client(self, target_node: str) -> 'rclpy.client.Client':
+        """Lazily create + cache a SetParameters service client for a remote Nav2 node."""
+        cli = self._param_clients.get(target_node)
+        if cli is None:
+            cli = self._node.create_client(SetParameters, f'{target_node}/set_parameters')
+            self._param_clients[target_node] = cli
+        return cli
+
+    def _set_remote_param_async(self, target_node: str, name: str, value: ParameterValue) -> None:
+        """비동기로 원격 Nav2 노드 파라미터 설정. 콜백/이벤트 루프 블로킹 없음."""
+        cli = self._get_param_client(target_node)
+        if not cli.service_is_ready():
+            self._node.get_logger().debug(
+                f'set_param skipped: {target_node}/set_parameters not ready')
+            return
+        req = SetParameters.Request()
+        req.parameters = [Parameter(name=name, value=value)]
+        cli.call_async(req)
+
     def _set_nav2_mode(self, mode: str) -> None:
         """Nav2 파라미터를 GUIDING/RETURNING 모드에 맞게 동적 전환.
 
@@ -145,35 +170,24 @@ class NavManager:
             return
         self._current_nav2_mode = mode
 
-        ns = f'robot_{self._robot_id}'
-        reversing = 'true' if mode == 'returning' else 'false'
-
-        try:
-            subprocess.run(
-                ['ros2', 'param', 'set', f'/{ns}/controller_server',
-                 'FollowPath.allow_reversing', reversing],
-                capture_output=True, timeout=10)
-        except Exception as e:
-            self._node.get_logger().warning('set_nav2_mode: %s' % e)
+        ns = f'/robot_{self._robot_id}'
+        reversing = mode == 'returning'
+        value = ParameterValue(type=ParameterType.PARAMETER_BOOL, bool_value=reversing)
+        self._set_remote_param_async(
+            f'{ns}/controller_server', 'FollowPath.allow_reversing', value)
         self._node.get_logger().info(
             'Nav2 mode → %s (reversing=%s)' % (mode, reversing))
 
     def _set_inflation(self, enable: bool) -> None:
         """Inflation 동적 제어 — 좁은 복도 통과 시 비활성화."""
-        ns = f'robot_{self._robot_id}'
-        radius = str(_INFLATION_RADIUS_DEFAULT) if enable else '0.0'
-
+        ns = f'/robot_{self._robot_id}'
+        radius = _INFLATION_RADIUS_DEFAULT if enable else 0.0
+        value = ParameterValue(type=ParameterType.PARAMETER_DOUBLE, double_value=radius)
         for costmap in ('local_costmap/local_costmap', 'global_costmap/global_costmap'):
-            try:
-                subprocess.run(
-                    ['ros2', 'param', 'set', f'/{ns}/{costmap}',
-                     'inflation_layer.inflation_radius', radius],
-                    capture_output=True, timeout=10)
-            except Exception as e:
-                self._node.get_logger().warning(
-                    'set_inflation(%s): %s' % (costmap, e))
+            self._set_remote_param_async(
+                f'{ns}/{costmap}', 'inflation_layer.inflation_radius', value)
         self._node.get_logger().info(
-            'Inflation → %s (radius=%s)' % ('ON' if enable else 'OFF', radius))
+            'Inflation → %s (radius=%.2f)' % ('ON' if enable else 'OFF', radius))
 
     # ──────────────────────────────────────────
     # 내부 — Nav2 호출
@@ -192,8 +206,9 @@ class NavManager:
         goal_msg.pose.header.stamp = rclpy.time.Time().to_msg()
         goal_msg.pose.pose.position.x = x
         goal_msg.pose.pose.position.y = y
-        goal_msg.pose.pose.orientation.z = math.sin(theta / 2.0)
-        goal_msg.pose.pose.orientation.w = math.cos(theta / 2.0)
+        _, _, qz, qw = yaw_to_quat(theta)
+        goal_msg.pose.pose.orientation.z = qz
+        goal_msg.pose.pose.orientation.w = qw
         return goal_msg
 
     def _send_nav_goal(self, x: float, y: float, theta: float) -> bool:
@@ -233,7 +248,6 @@ class NavManager:
             self._node.get_logger().warning('send_nav_goal: timeout or rejected')
             return False
 
-        from action_msgs.msg import GoalStatus
         if result.status == GoalStatus.STATUS_SUCCEEDED:
             self._node.get_logger().info('send_nav_goal: succeeded')
             return True
@@ -263,8 +277,9 @@ class NavManager:
             p.header.stamp = rclpy.time.Time().to_msg()
             p.pose.position.x = x
             p.pose.position.y = y
-            p.pose.orientation.z = math.sin(theta / 2.0)
-            p.pose.orientation.w = math.cos(theta / 2.0)
+            _, _, qz, qw = yaw_to_quat(theta)
+            p.pose.orientation.z = qz
+            p.pose.orientation.w = qw
             goal_msg.poses.append(p)
 
         self._node.get_logger().info(
@@ -300,7 +315,6 @@ class NavManager:
                 'send_nav_through_poses: timeout or rejected')
             return False
 
-        from action_msgs.msg import GoalStatus
         if result.status == GoalStatus.STATUS_SUCCEEDED:
             self._node.get_logger().info('send_nav_through_poses: succeeded')
             return True

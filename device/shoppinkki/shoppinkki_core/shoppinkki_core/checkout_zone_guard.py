@@ -60,13 +60,13 @@ class CheckoutZoneGuard:
         self.on_exit_blocked: Optional[Callable[[], None]] = None
         self.on_reenter: Optional[Callable[[], None]] = None
 
-        # BoundaryMonitor의 내부 콜백을 본 클래스 메서드로 재배선.
+        # BoundaryMonitor 콜백을 본 클래스 메서드로 재배선 (공개 setter 경유).
         if self._boundary_monitor is not None:
-            self._boundary_monitor._on_checkout_enter = self.emit_zone_enter
-            self._boundary_monitor._on_checkout_exit_blocked = (
-                self.on_exit_blocked_event
+            self._boundary_monitor.set_callbacks(
+                on_enter=self.emit_zone_enter,
+                on_exit_blocked=self.on_exit_blocked_event,
+                on_reenter=self.on_reenter_event,
             )
-            self._boundary_monitor._on_checkout_reenter = self.on_reenter_event
 
         # LocalizationManager → BoundaryMonitor wiring (AMCL pose 갱신 시 호출).
         if self._localization is not None and self._boundary_monitor is not None:
@@ -126,41 +126,32 @@ class CheckoutZoneGuard:
     # (BoundaryMonitor가 직접 호출 → 외부 hook으로 fan-out)
     # ──────────────────────────────────────────
 
+    def _safe_call(self, hook: Optional[Callable[[], None]], hook_name: str) -> None:
+        """외부 hook 호출 시 예외를 삼키고 로깅만 한다 (3개 핸들러 공통)."""
+        if hook is None:
+            return
+        try:
+            hook()
+        except Exception as e:
+            self._node.get_logger().warning(
+                f'CheckoutZoneGuard: {hook_name} hook error: {e}'
+            )
+
     def emit_zone_enter(self) -> None:
         """TRACKING 상태에서 결제 구역 최초 진입."""
-        if self.on_zone_enter is not None:
-            try:
-                self.on_zone_enter()
-            except Exception as e:
-                self._node.get_logger().warning(
-                    f'CheckoutZoneGuard: on_zone_enter hook error: {e}'
-                )
+        self._safe_call(self.on_zone_enter, 'on_zone_enter')
 
     def on_exit_blocked_event(self) -> None:
         """결제 구역 이탈 시도: 허용 상태가 아니면 motion 차단 + toast publish.
 
         실제 motion block / publish 작업은 main_node가 wire한 `on_exit_blocked`
-        hook이 담당한다. 본 메서드는 rate-limit 시각만 갱신하여 hook이
-        토스트를 보낼 수 있도록 신호를 준다 (hook 내부에서 `last_blocked_toast`
-        대신 `_last_blocked_toast` 직접 접근 가능).
+        hook이 담당한다.
         """
-        if self.on_exit_blocked is not None:
-            try:
-                self.on_exit_blocked()
-            except Exception as e:
-                self._node.get_logger().warning(
-                    f'CheckoutZoneGuard: on_exit_blocked hook error: {e}'
-                )
+        self._safe_call(self.on_exit_blocked, 'on_exit_blocked')
 
     def on_reenter_event(self) -> None:
         """결제 구역 재진입: 차단 해제 hook 호출."""
-        if self.on_reenter is not None:
-            try:
-                self.on_reenter()
-            except Exception as e:
-                self._node.get_logger().warning(
-                    f'CheckoutZoneGuard: on_reenter hook error: {e}'
-                )
+        self._safe_call(self.on_reenter, 'on_reenter')
 
     # ──────────────────────────────────────────
     # Toast rate-limit helper (for hooks)

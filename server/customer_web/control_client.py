@@ -5,6 +5,7 @@
 
 import json
 import logging
+import queue
 import socket
 import threading
 import time
@@ -12,6 +13,9 @@ import time
 logger = logging.getLogger(__name__)
 
 RECONNECT_DELAY = 5  # 초
+# 재시도 큐는 무한 적재를 막아야 한다 — control_service가 장시간 죽으면 백로그가
+# 쌓여 메모리 + 정체된 명령이 한꺼번에 flush 되는 것을 방지.
+_RETRY_QUEUE_MAX = 64
 
 
 class ControlClient:
@@ -31,6 +35,10 @@ class ControlClient:
         self._lock = threading.Lock()
         self._running = False
         self._thread: threading.Thread | None = None
+        # 단일 retry 워커 + bounded 큐. send()마다 thread를 spawn하면 control_service가
+        # 끊긴 동안 daemon thread가 무한히 누적된다.
+        self._retry_queue: queue.Queue = queue.Queue(maxsize=_RETRY_QUEUE_MAX)
+        self._retry_thread: threading.Thread | None = None
 
     # ── 연결 관리 ──────────────────────────────────────────────
 
@@ -41,6 +49,10 @@ class ControlClient:
         self._running = True
         self._thread = threading.Thread(target=self._connect_loop, daemon=True)
         self._thread.start()
+        if self._retry_thread is None or not self._retry_thread.is_alive():
+            self._retry_thread = threading.Thread(
+                target=self._retry_worker, daemon=True, name='ctrl-retry')
+            self._retry_thread.start()
 
     def disconnect(self):
         """연결 루프를 중단하고 소켓을 닫는다."""
@@ -139,33 +151,40 @@ class ControlClient:
     # ── 송신 ───────────────────────────────────────────────────
 
     def send(self, payload: dict, retry_timeout: float = 10.0):
-        """
-        JSON 메시지를 개행 구분 방식으로 control_service에 전송.
-        소켓이 없으면 백그라운드에서 최대 retry_timeout초 대기 후 재전송.
-        """
+        """JSON 메시지를 control_service에 전송. 소켓이 없으면 단일 retry 워커에 위임."""
         with self._lock:
             sock = self._sock
 
         if sock is not None:
             self._do_send(sock, payload)
-        else:
-            # Non-blocking retry in background thread
-            logger.warning("소켓 없음 — 백그라운드에서 재시도 (최대 %.0fs): %s", retry_timeout, payload)
-            t = threading.Thread(target=self._send_with_retry,
-                                 args=(payload, retry_timeout), daemon=True)
-            t.start()
+            return
 
-    def _send_with_retry(self, payload: dict, retry_timeout: float):
-        """백그라운드에서 소켓 연결 대기 후 전송."""
-        deadline = time.monotonic() + retry_timeout
-        while time.monotonic() < deadline:
-            with self._lock:
-                sock = self._sock
-            if sock is not None:
-                self._do_send(sock, payload)
-                return
-            time.sleep(0.5)
-        logger.warning("소켓 재시도 타임아웃, 메시지 미전송: %s", payload)
+        try:
+            self._retry_queue.put_nowait((payload, time.monotonic() + retry_timeout))
+            logger.warning("소켓 없음 — retry queue 적재 (대기 %d): %s",
+                           self._retry_queue.qsize(), payload)
+        except queue.Full:
+            logger.error("retry queue 가득참 (max=%d), 메시지 드롭: %s",
+                         _RETRY_QUEUE_MAX, payload)
+
+    def _retry_worker(self):
+        """대기 큐에 적재된 메시지를 단일 thread로 처리. send마다 thread를 spawn하지 않는다."""
+        while self._running or not self._retry_queue.empty():
+            try:
+                payload, deadline = self._retry_queue.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            sent = False
+            while self._running and time.monotonic() < deadline:
+                with self._lock:
+                    sock = self._sock
+                if sock is not None:
+                    self._do_send(sock, payload)
+                    sent = True
+                    break
+                time.sleep(0.5)
+            if not sent:
+                logger.warning("소켓 재시도 만료, 메시지 미전송: %s", payload)
 
     def _do_send(self, sock, payload: dict):
         """실제 소켓 전송."""

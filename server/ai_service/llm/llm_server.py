@@ -8,13 +8,16 @@ from __future__ import annotations
 import logging
 import os
 import re
+import threading
 import requests
+from contextlib import contextmanager
 from typing import Optional
 
 from flask import Flask, jsonify, request
 from sentence_transformers import SentenceTransformer
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 import numpy as np
 import warnings
 warnings.filterwarnings("ignore")
@@ -38,32 +41,91 @@ PORT = int(os.environ.get('PORT', '8000'))
 OLLAMA_URL = os.environ.get('OLLAMA_URL', 'http://127.0.0.1:11434/api/generate')
 OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'qwen2.5:3b')
 
-# ── Sentence-Transformers 모델 로드 ──────────────────────────────
+# ── Sentence-Transformers 모델 (lazy) ──────────────────────────
+# 모듈 import 시점에 동기 로드하면 Flask가 첫 요청을 받기까지 15초+ 블록된다.
+# 첫 호출에서 lazy 로드하고 결과는 모듈 단에 캐시.
 EMBED_MODEL_NAME = 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'
-logger.info("Sentence-Transformers 모델(%s) 로드 중...", EMBED_MODEL_NAME)
-try:
-    _embed_model = SentenceTransformer(EMBED_MODEL_NAME)
-    logger.info("NLP 임베딩 모델 초기화 완료! (384차원)")
-except Exception as e:
-    logger.error("NLP 임베딩 초기화 에러: %s", e)
-    _embed_model = None
+_embed_model: Optional[SentenceTransformer] = None
+_embed_model_lock = threading.Lock()
+
+
+def _get_embed_model() -> Optional[SentenceTransformer]:
+    global _embed_model
+    if _embed_model is not None:
+        return _embed_model
+    with _embed_model_lock:
+        if _embed_model is None:
+            logger.info("Sentence-Transformers 모델(%s) 로드 중...", EMBED_MODEL_NAME)
+            try:
+                _embed_model = SentenceTransformer(EMBED_MODEL_NAME)
+                logger.info("NLP 임베딩 모델 초기화 완료! (384차원)")
+            except Exception as e:
+                logger.error("NLP 임베딩 초기화 에러: %s", e)
+                _embed_model = None
+    return _embed_model
+
 
 def vector_to_string(values: np.ndarray) -> str:
     """PostgreSQL pgvector 형식을 위한 문자열 변환 [v1, v2, ...]"""
     return "[" + ", ".join(f"{v:.8f}" for v in values) + "]"
 
-def get_db_connection():
-    return psycopg2.connect(
-        host=PG_HOST,
-        port=PG_PORT,
-        user=PG_USER,
-        password=PG_PASSWORD,
-        dbname=PG_DATABASE,
-        connect_timeout=3
-    )
+
+# ── DB connection pool ───────────────────────────────────────────
+_db_pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
+_db_pool_lock = threading.Lock()
+
+
+def _get_db_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    global _db_pool
+    if _db_pool is not None:
+        return _db_pool
+    with _db_pool_lock:
+        if _db_pool is None:
+            _db_pool = psycopg2.pool.ThreadedConnectionPool(
+                minconn=1, maxconn=5,
+                host=PG_HOST, port=PG_PORT,
+                user=PG_USER, password=PG_PASSWORD,
+                dbname=PG_DATABASE, connect_timeout=3,
+            )
+    return _db_pool
+
+
+@contextmanager
+def _db_cursor():
+    """Pooled connection + RealDictCursor. 자동 commit/rollback/return."""
+    pool = _get_db_pool()
+    conn = pool.getconn()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        try:
+            yield cur
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
+    finally:
+        pool.putconn(conn)
+
+
+def _sanitize_user_input(text: str, max_len: int = 200) -> str:
+    """LLM 프롬프트에 들어가는 사용자 입력을 정제한다.
+
+    - 길이 제한 (token 폭주 방지)
+    - 개행/제어문자를 공백으로 (인스트럭션 분리 트릭 차단)
+    - f-string brace는 영향 없지만 LLM이 인스트럭션처럼 읽지 않도록 양 끝 quote 제거
+    """
+    if text is None:
+        return ''
+    cleaned = re.sub(r'[\x00-\x1f\x7f]+', ' ', text)
+    cleaned = cleaned.replace('"', '').replace("'", '').strip()
+    return cleaned[:max_len]
 
 def ask_qwen(user_query: str, search_result: str, zone_type: str = 'product') -> str:
     """Ollama를 통해 Qwen 2.5 3B 모델에게 답변 생성 요청"""
+    user_query = _sanitize_user_input(user_query)
+    search_result = _sanitize_user_input(search_result, max_len=500)
     try:
         if zone_type == 'special':
             # 화장실, 입구, 출구 등 특수 구역은 경로 설명 없이 매우 간결하게 안내
@@ -112,92 +174,83 @@ def ask_qwen(user_query: str, search_result: str, zone_type: str = 'product') ->
 
 def search_context_in_db(name: str) -> Optional[dict]:
     """pgvector 기반 벡터 검색"""
-    if _embed_model is None: return None
+    embed_model = _get_embed_model()
+    if embed_model is None:
+        return None
     try:
-        query_vector = _embed_model.encode(name, normalize_embeddings=True)
+        query_vector = embed_model.encode(name, normalize_embeddings=True)
         vec_str = vector_to_string(query_vector)
-        
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        
+
         # 동의어 처리 (카운터 등 -> 결제 구역)
         synonyms = {'카운터': '결제 구역', '계산대': '결제 구역', '캐셔': '결제 구역'}
         exact_match_name = synonyms.get(name, name)
-        
-        # 0. 텍스트 부분/완전 일치 검색 (질문 내에 상품명/구역명이 포함되어 있는지 확인)
-        exact_query = """
-            SELECT * FROM (
-                SELECT 'product' as type, p.product_name as display_name, z.zone_id, z.zone_name, z.zone_type, 0.01 as distance,
-                       ze.empathy_prefix, ze.required_keywords
-                FROM product p
-                JOIN zone z ON p.zone_id = z.zone_id
-                LEFT JOIN zone_text_embedding ze ON z.zone_id = ze.zone_id
-                WHERE LOWER(%s) LIKE '%%' || LOWER(p.product_name) || '%%'
-                UNION ALL
-                SELECT 'zone' as type, z.zone_name as display_name, z.zone_id, z.zone_name, z.zone_type, 0.02 as distance,
-                       ze.empathy_prefix, ze.required_keywords
-                FROM zone z
-                LEFT JOIN zone_text_embedding ze ON z.zone_id = ze.zone_id
-                WHERE LOWER(%s) LIKE '%%' || LOWER(z.zone_name) || '%%'
-            ) AS match_union
-            ORDER BY LENGTH(display_name) DESC, distance ASC
-            LIMIT 1;
-        """
-        cursor.execute(exact_query, (exact_match_name, exact_match_name))
-        row = cursor.fetchone()
-        if row:
-            logger.info('텍스트 완전 일치 검색 성공(지능형): "%s" (원본: "%s") -> %s', exact_match_name, name, row['display_name'])
-            cursor.close()
-            conn.close()
-            return row
 
-        query = """
-            SELECT type, display_name, zone_id, zone_name, zone_type, distance, empathy_prefix, required_keywords FROM (
-                -- 1. 상품명 검색 (해당 구역의 공감 멘트와 필수 키워드 포함)
-                SELECT 'product' as type, p.product_name as display_name, z.zone_id, z.zone_name, z.zone_type,
-                       (te.embedding <=> %s::vector) as distance,
-                       ze.empathy_prefix,
-                       ze.required_keywords
-                FROM product_text_embedding te
-                JOIN product p ON te.product_id = p.product_id
-                JOIN zone z ON p.zone_id = z.zone_id
-                LEFT JOIN zone_text_embedding ze ON z.zone_id = ze.zone_id
-                WHERE (te.embedding <=> %s::vector) < 0.40
-                
-                UNION ALL
-                
-                -- 2. 구역 설명 검색
-                SELECT 'zone' as type, z.zone_name as display_name, z.zone_id, z.zone_name, z.zone_type,
-                       (ze.embedding <=> %s::vector) as distance,
-                       ze.empathy_prefix,
-                       ze.required_keywords
-                FROM zone_text_embedding ze
-                JOIN zone z ON ze.zone_id = z.zone_id
-                WHERE (ze.embedding <=> %s::vector) < 0.40
-            ) as combined_search
-            ORDER BY distance ASC
-            LIMIT 1;
-        """
-        cursor.execute(query, (vec_str, vec_str, vec_str, vec_str))
-        row = cursor.fetchone()
-        cursor.close()
-        conn.close()
-        
-        return row
+        with _db_cursor() as cursor:
+            # 0. 텍스트 부분/완전 일치 검색
+            exact_query = """
+                SELECT * FROM (
+                    SELECT 'product' as type, p.product_name as display_name, z.zone_id, z.zone_name, z.zone_type, 0.01 as distance,
+                           ze.empathy_prefix, ze.required_keywords
+                    FROM product p
+                    JOIN zone z ON p.zone_id = z.zone_id
+                    LEFT JOIN zone_text_embedding ze ON z.zone_id = ze.zone_id
+                    WHERE LOWER(%s) LIKE '%%' || LOWER(p.product_name) || '%%'
+                    UNION ALL
+                    SELECT 'zone' as type, z.zone_name as display_name, z.zone_id, z.zone_name, z.zone_type, 0.02 as distance,
+                           ze.empathy_prefix, ze.required_keywords
+                    FROM zone z
+                    LEFT JOIN zone_text_embedding ze ON z.zone_id = ze.zone_id
+                    WHERE LOWER(%s) LIKE '%%' || LOWER(z.zone_name) || '%%'
+                ) AS match_union
+                ORDER BY LENGTH(display_name) DESC, distance ASC
+                LIMIT 1;
+            """
+            cursor.execute(exact_query, (exact_match_name, exact_match_name))
+            row = cursor.fetchone()
+            if row:
+                logger.info('텍스트 완전 일치 검색 성공(지능형): "%s" (원본: "%s") -> %s',
+                            exact_match_name, name, row['display_name'])
+                return row
+
+            query = """
+                SELECT type, display_name, zone_id, zone_name, zone_type, distance, empathy_prefix, required_keywords FROM (
+                    SELECT 'product' as type, p.product_name as display_name, z.zone_id, z.zone_name, z.zone_type,
+                           (te.embedding <=> %s::vector) as distance,
+                           ze.empathy_prefix,
+                           ze.required_keywords
+                    FROM product_text_embedding te
+                    JOIN product p ON te.product_id = p.product_id
+                    JOIN zone z ON p.zone_id = z.zone_id
+                    LEFT JOIN zone_text_embedding ze ON z.zone_id = ze.zone_id
+                    WHERE (te.embedding <=> %s::vector) < 0.40
+
+                    UNION ALL
+
+                    SELECT 'zone' as type, z.zone_name as display_name, z.zone_id, z.zone_name, z.zone_type,
+                           (ze.embedding <=> %s::vector) as distance,
+                           ze.empathy_prefix,
+                           ze.required_keywords
+                    FROM zone_text_embedding ze
+                    JOIN zone z ON ze.zone_id = z.zone_id
+                    WHERE (ze.embedding <=> %s::vector) < 0.40
+                ) as combined_search
+                ORDER BY distance ASC
+                LIMIT 1;
+            """
+            cursor.execute(query, (vec_str, vec_str, vec_str, vec_str))
+            return cursor.fetchone()
     except Exception as e:
         logger.error('벡터 검색 중 에러: %s', e)
     return None
 
 def extract_keywords(user_query: str) -> list[str]:
     """DB에서 Few-shot 예제를 가져와 동적으로 프롬프트를 생성하고 핵심 키워드 추출"""
+    user_query = _sanitize_user_input(user_query)
     try:
-        # 1. DB에서 지능형 예제 로드
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cursor.execute("SELECT input_query, output_keywords FROM llm_fewshot_example ORDER BY id ASC")
-        examples = cursor.fetchall()
-        cursor.close()
-        conn.close()
+        with _db_cursor() as cursor:
+            cursor.execute(
+                "SELECT input_query, output_keywords FROM llm_fewshot_example ORDER BY id ASC")
+            examples = cursor.fetchall()
 
         # 2. 동적 프롬프트 조립
         examples_text = ""
@@ -273,13 +326,13 @@ def get_db_routing(user_query: str):
     DB의 intent_routing 테이블을 조회하여 고정 키워드 매핑 수행.
     """
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        # 우선순위 높은 순으로 정렬하여 조회
-        cursor.execute("SELECT intent_routing.keywords, intent_routing.zone_id, zone.zone_name, intent_routing.item_name, intent_routing.empathy_prefix FROM intent_routing JOIN zone ON intent_routing.zone_id = zone.zone_id ORDER BY intent_routing.priority DESC")
-        routings = cursor.fetchall()
-        cursor.close()
-        conn.close()
+        with _db_cursor() as cursor:
+            cursor.execute(
+                "SELECT intent_routing.keywords, intent_routing.zone_id, zone.zone_name, "
+                "intent_routing.item_name, intent_routing.empathy_prefix "
+                "FROM intent_routing JOIN zone ON intent_routing.zone_id = zone.zone_id "
+                "ORDER BY intent_routing.priority DESC")
+            routings = cursor.fetchall()
 
         clean_query = user_query.lower()
         for row in routings:
@@ -301,8 +354,12 @@ app.json.ensure_ascii = False
 @app.route('/query', methods=['GET'])
 def query():
     name = request.args.get('name', '').strip()
-    if not name: return jsonify({'error': 'name 필요'}), 400
-    
+    if not name:
+        return jsonify({'error': 'name 필요'}), 400
+    # 입력 길이 cap — 1MB query string으로 LLM 토크나이저 폭주 방지.
+    if len(name) > 200:
+        return jsonify({'error': 'query too long'}), 400
+
     logger.info('검색 요청: "%s"', name)
 
     # ── [0순위] 무의미한 입력 및 블랙리스트 방어 ──

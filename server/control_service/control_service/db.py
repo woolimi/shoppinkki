@@ -105,10 +105,23 @@ def get_all_robots() -> List[Dict]:
         return cur.fetchall()
 
 
+_ROBOT_UPDATABLE_COLUMNS = frozenset({
+    'ip_address', 'current_mode', 'pos_x', 'pos_y', 'battery_level',
+    'last_seen', 'active_user_id', 'is_locked_return',
+})
+
+
 def update_robot(robot_id: str, **fields) -> None:
-    """Update arbitrary ROBOT columns by keyword argument."""
+    """Update ROBOT columns by keyword argument.
+
+    Column names are validated against an allowlist before interpolation
+    to prevent SQL injection via attacker-controlled keyword arguments.
+    """
     if not fields:
         return
+    invalid = set(fields) - _ROBOT_UPDATABLE_COLUMNS
+    if invalid:
+        raise ValueError(f'update_robot: unknown columns {sorted(invalid)}')
     cols = ', '.join(f'{k} = %s' for k in fields)
     vals = list(fields.values()) + [robot_id]
     with _cursor() as cur:
@@ -128,20 +141,6 @@ def get_user(user_id: str) -> Optional[Dict]:
 # ──────────────────────────────────────────────
 # SESSION maintenance
 # ──────────────────────────────────────────────
-
-def deactivate_expired_sessions() -> int:
-    """Deactivate sessions that are expired but still marked active.
-
-    Returns:
-        Number of rows updated.
-    """
-    with _cursor(dictionary=False) as cur:
-        cur.execute(
-            'UPDATE SESSION '
-            'SET is_active = FALSE '
-            'WHERE is_active = TRUE AND expires_at <= NOW()'
-        )
-        return int(cur.rowcount or 0)
 
 def reset_sessions_on_startup() -> None:
     """Hard reset sessions for test/demo runs.
@@ -227,32 +226,34 @@ def end_session(session_id: int) -> None:
         )
 
 
-def deactivate_expired_sessions() -> None:
-    """Deactivate sessions that have passed their expires_at time."""
+def deactivate_expired_sessions() -> int:
+    """Deactivate sessions that have passed their expires_at time.
+
+    Also clears the owning robot's active_user_id so the robot becomes
+    available again. Returns the number of sessions deactivated.
+    """
     with _cursor() as cur:
-        # Get session_ids of sessions that are about to be deactivated
         cur.execute(
             'SELECT session_id, robot_id FROM SESSION '
             'WHERE is_active = TRUE AND expires_at < NOW()'
         )
         expired = cur.fetchall()
         if not expired:
-            return
+            return 0
 
         expired_ids = [s['session_id'] for s in expired]
         expired_robots = [s['robot_id'] for s in expired]
 
-        # Deactivate sessions
         cur.execute(
             'UPDATE SESSION SET is_active = FALSE WHERE session_id = ANY(%s)',
             (expired_ids,),
         )
-        # Clear robots
         cur.execute(
             'UPDATE robot SET active_user_id = NULL WHERE robot_id = ANY(%s)',
             (expired_robots,),
         )
         logger.info('Deactivated %d expired sessions.', len(expired_ids))
+        return len(expired_ids)
 
 
 # ──────────────────────────────────────────────
@@ -266,24 +267,27 @@ def get_cart_by_session(session_id: int) -> Optional[Dict]:
 
 
 def add_cart_item(cart_id: int, product_name: str, price: int) -> int:
-    """Insert a new cart item or increment quantity if the same unpaid item exists."""
+    """Insert a new cart item or increment quantity if the same unpaid item exists.
+
+    Single round-trip CTE upsert: UPDATE first (with row lock), then INSERT
+    only if no row was updated. Avoids the schema change a real ON CONFLICT
+    would require (no partial UNIQUE index on is_paid=FALSE).
+    """
     with _cursor() as cur:
         cur.execute(
-            'SELECT item_id FROM CART_ITEM '
-            'WHERE cart_id = %s AND product_name = %s AND price = %s AND is_paid = FALSE',
-            (cart_id, product_name, price),
-        )
-        row = cur.fetchone()
-        if row:
-            cur.execute(
-                'UPDATE CART_ITEM SET quantity = quantity + 1 WHERE item_id = %s',
-                (row['item_id'],),
-            )
-            return row['item_id']
-        cur.execute(
-            'INSERT INTO CART_ITEM (cart_id, product_name, price) VALUES (%s, %s, %s) '
-            'RETURNING item_id',
-            (cart_id, product_name, price),
+            'WITH updated AS ( '
+            '  UPDATE CART_ITEM SET quantity = quantity + 1 '
+            '  WHERE cart_id = %s AND product_name = %s AND price = %s '
+            '        AND is_paid = FALSE '
+            '  RETURNING item_id '
+            '), inserted AS ( '
+            '  INSERT INTO CART_ITEM (cart_id, product_name, price) '
+            '  SELECT %s, %s, %s WHERE NOT EXISTS (SELECT 1 FROM updated) '
+            '  RETURNING item_id '
+            ') '
+            'SELECT item_id FROM updated UNION ALL SELECT item_id FROM inserted '
+            'LIMIT 1',
+            (cart_id, product_name, price, cart_id, product_name, price),
         )
         return cur.fetchone()['item_id']
 

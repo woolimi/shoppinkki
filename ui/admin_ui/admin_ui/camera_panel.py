@@ -168,6 +168,7 @@ class CameraDebugPanel(QWidget):
     def _stop_stream(self):
         if self._mjpeg_thread is not None:
             self._mjpeg_thread.stop()
+            self._mjpeg_thread.deleteLater()
             self._mjpeg_thread = None
 
     def _on_frame_received(self, jpeg_bytes: bytes):
@@ -185,22 +186,29 @@ class CameraDebugPanel(QWidget):
     def _render_frame(self):
         if self._current_pixmap is None:
             return
+        # bbox가 없으면 원본 pixmap 자체를 직접 scaled — 매 프레임 .copy() 회피.
+        if not self._bbox:
+            scaled = self._current_pixmap.scaled(
+                self._lbl_frame.size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.FastTransformation,
+            )
+            self._lbl_frame.setPixmap(scaled)
+            return
         pix = self._current_pixmap.copy()
-        if self._bbox:
-            painter = QPainter(pix)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            cx = self._bbox.get('cx', 0)
-            area = self._bbox.get('area', 0)
-            conf = self._bbox.get('confidence', 0.0)
-            # area로 사각형 크기 추정
-            side = int(math.sqrt(area)) if area > 0 else 20
-            x1 = cx - side // 2
-            y1 = self._bbox.get('cy', 0) - side // 2
-            painter.setPen(QPen(QColor('#27ae60'), 2))
-            painter.drawRect(x1, y1, side, side)
-            painter.setPen(QColor('#27ae60'))
-            painter.drawText(x1, y1 - 4, f'{conf * 100:.0f}%')
-            painter.end()
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        cx = self._bbox.get('cx', 0)
+        area = self._bbox.get('area', 0)
+        conf = self._bbox.get('confidence', 0.0)
+        side = int(math.sqrt(area)) if area > 0 else 20
+        x1 = cx - side // 2
+        y1 = self._bbox.get('cy', 0) - side // 2
+        painter.setPen(QPen(QColor('#27ae60'), 2))
+        painter.drawRect(x1, y1, side, side)
+        painter.setPen(QColor('#27ae60'))
+        painter.drawText(x1, y1 - 4, f'{conf * 100:.0f}%')
+        painter.end()
         scaled = pix.scaled(
             self._lbl_frame.size(),
             Qt.AspectRatioMode.KeepAspectRatio,

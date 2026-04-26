@@ -59,3 +59,33 @@ ROBOT_TIMEOUT_SEC: int = 30   # seconds without /status → OFFLINE
 
 # ── Session ───────────────────────────────────
 SESSION_DURATION_HOURS: int = 4   # session expires_at = now + 4h
+
+
+# ── 상태/모드 문자열 상수 ─────────────────────
+# SM과 UI/control_service가 공유하는 모드 문자열의 single source of truth.
+# 값은 기존 문자열을 그대로 두어 backward-compatible. 비교 시 typo를 방지하고
+# grep/IDE 자동완성을 가능하게 한다.
+class RobotMode:
+    OFFLINE = 'OFFLINE'
+    IDLE = 'IDLE'
+    CHARGING = 'CHARGING'
+    TRACKING = 'TRACKING'
+    TRACKING_CHECKOUT = 'TRACKING_CHECKOUT'
+    SEARCHING = 'SEARCHING'
+    WAITING = 'WAITING'
+    GUIDING = 'GUIDING'
+    RETURNING = 'RETURNING'
+    LOCKED = 'LOCKED'
+    HALTED = 'HALTED'
+
+
+# 카메라 피드를 LCD에 그릴 수 있는 상태들 (vision_manager).
+CAMERA_ACTIVE_MODES: frozenset[str] = frozenset({
+    RobotMode.IDLE, RobotMode.TRACKING,
+    RobotMode.TRACKING_CHECKOUT, RobotMode.SEARCHING,
+})
+
+# RETURNING 자동 전이를 트리거할 수 있는 상태들 (robot_manager checkout_zone_enter).
+CHECKOUT_AUTO_RETURN_FROM: frozenset[str] = frozenset({
+    RobotMode.TRACKING, RobotMode.TRACKING_CHECKOUT,
+})

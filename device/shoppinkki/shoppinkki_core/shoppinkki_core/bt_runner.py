@@ -154,11 +154,12 @@ class BTRunner:
         self._tree = py_trees_ros.trees.BehaviourTree(
             root=self._root, unicode_tree_debug=False)
 
-        # BT 인스턴스 참조 (외부 접근용)
+        # BT 인스턴스 참조 (외부 접근용 + _get_active_bt에서 children index 우회)
         self._bt_tracking = bt_tracking
         self._bt_searching = bt_searching
         self._bt_guiding = bt_guiding
         self._bt_waiting = bt_waiting
+        self._bt_returning = bt_returning
 
         logger.info('BTRunner: py_trees 트리 구성 완료')
         logger.info('\n' + py_trees.display.unicode_tree(root=self._root))
@@ -218,96 +219,112 @@ class BTRunner:
     def _handle_transitions(self) -> None:
         """BT 결과(SUCCESS/FAILURE)에 따른 SM 상태 전이."""
         state = self.sm.state
-        bt = self._get_active_bt(state)
-        status = bt.status if bt else None
 
+        # IDLE은 BT가 없는 특수 케이스 — Auto-Resume / Proactive SEARCHING 분기.
         if state == 'IDLE':
-            if self._is_registration_active and self._is_registration_active(): return
-            
-            # [Auto-Resume] Only if someone is already registered (is_ready)
-            if self.detector is not None and self.detector.is_ready() and self.detector.is_connected():
-                latest = self.detector.get_latest()
-                if latest is not None:
-                    logger.info('BTRunner: Re-acquired owner from IDLE! Resuming TRACKING')
-                    self.sm.enter_tracking()
-                    return
-
-            if not self._enable_idle_proactive_search:
-                return
-            
-            # Proactive SEARCHING: Only if someone is registered but not in sight
-            if self.detector is not None and self.detector.is_ready() and self.detector.is_connected():
-                if self.detector.get_latest() is None:
-                    import time
-                    elapsed = time.monotonic() - self._last_search_fail_time
-                    if elapsed >= self._SEARCH_COOLDOWN:
-                        logger.info('BTRunner: Proactive SEARCHING - owner missing from IDLE')
-                        self.sm.enter_searching()
-                    else:
-                        logger.debug('BTRunner: Search cooldown active (%.1fs left)', self._SEARCH_COOLDOWN - elapsed)
+            self._handle_idle_transition()
             return
 
-        if bt is None or status == py_trees.common.Status.RUNNING:
+        bt = self._get_active_bt(state)
+        if bt is None or bt.status == py_trees.common.Status.RUNNING:
             return
 
-        if state in ('TRACKING', 'TRACKING_CHECKOUT'):
-            # 추종 중 인형을 놓치면 즉시 탐색 시작
-            if status == py_trees.common.Status.FAILURE:
-                if self._is_tracking_grace_active and self._is_tracking_grace_active():
-                    logger.info('BTRunner: tracking grace active, suppress SEARCHING transition')
-                    return
-                self.sm.enter_searching()
+        handler = self._STATE_TRANSITION_HANDLERS.get(state)
+        if handler is not None:
+            handler(self, bt.status)
 
-        elif state == 'SEARCHING':
-            if status == py_trees.common.Status.SUCCESS:
-                self.sm.enter_tracking()
-            elif status == py_trees.common.Status.FAILURE:
-                import time
-                self._last_search_fail_time = time.monotonic()
-                logger.info('BTRunner: SEARCHING failed → returning to IDLE')
-                self.sm.enter_idle()
+    # ── per-state transition handlers ─────────
 
-        elif state == 'GUIDING':
-            if status == py_trees.common.Status.SUCCESS:
-                if self._on_arrived:
-                    self._on_arrived()
-                self.sm.enter_waiting()
-            elif status == py_trees.common.Status.FAILURE:
-                if self._on_nav_failed:
-                    self._on_nav_failed()
-                self.sm.enter_waiting()
+    def _handle_idle_transition(self) -> None:
+        if self._is_registration_active and self._is_registration_active():
+            return
 
-        elif state == 'RETURNING':
-            if status == py_trees.common.Status.SUCCESS:
-                self.sm.enter_charging()
-            elif status == py_trees.common.Status.FAILURE:
-                logger.warning('BTRunner: BT5 RETURNING failed')
+        if not (self.detector is not None
+                and self.detector.is_ready()
+                and self.detector.is_connected()):
+            return
 
-        elif state == 'WAITING':
-            if status == py_trees.common.Status.FAILURE:
-                logger.info('BTRunner: BT3 WAITING timeout')
-                unpaid = False
-                if self._has_unpaid_items:
-                    try:
-                        unpaid = bool(self._has_unpaid_items())
-                    except Exception:
-                        # Same policy as main_node._has_unpaid_items: unknown → not unpaid → RETURNING.
-                        logger.exception('BTRunner: has_unpaid_items callback failed')
-                self.sm.waiting_exit_by_unpaid(unpaid)
+        # [Auto-Resume] 이미 등록된 주인을 IDLE에서 다시 보면 즉시 TRACKING 복귀.
+        if self.detector.get_latest() is not None:
+            logger.info('BTRunner: Re-acquired owner from IDLE! Resuming TRACKING')
+            self.sm.enter_tracking()
+            return
+
+        # Proactive SEARCHING: 등록된 주인이 안 보이면 cooldown 후 탐색 모드로.
+        if not self._enable_idle_proactive_search:
+            return
+        elapsed = time.monotonic() - self._last_search_fail_time
+        if elapsed >= self._SEARCH_COOLDOWN:
+            logger.info('BTRunner: Proactive SEARCHING - owner missing from IDLE')
+            self.sm.enter_searching()
+        else:
+            logger.debug('BTRunner: Search cooldown active (%.1fs left)',
+                         self._SEARCH_COOLDOWN - elapsed)
+
+    def _handle_tracking_transition(self, status) -> None:
+        if status != py_trees.common.Status.FAILURE:
+            return
+        if self._is_tracking_grace_active and self._is_tracking_grace_active():
+            logger.info('BTRunner: tracking grace active, suppress SEARCHING transition')
+            return
+        self.sm.enter_searching()
+
+    def _handle_searching_transition(self, status) -> None:
+        if status == py_trees.common.Status.SUCCESS:
+            self.sm.enter_tracking()
+        elif status == py_trees.common.Status.FAILURE:
+            self._last_search_fail_time = time.monotonic()
+            logger.info('BTRunner: SEARCHING failed → returning to IDLE')
+            self.sm.enter_idle()
+
+    def _handle_guiding_transition(self, status) -> None:
+        if status == py_trees.common.Status.SUCCESS:
+            if self._on_arrived:
+                self._on_arrived()
+            self.sm.enter_waiting()
+        elif status == py_trees.common.Status.FAILURE:
+            if self._on_nav_failed:
+                self._on_nav_failed()
+            self.sm.enter_waiting()
+
+    def _handle_returning_transition(self, status) -> None:
+        if status == py_trees.common.Status.SUCCESS:
+            self.sm.enter_charging()
+        elif status == py_trees.common.Status.FAILURE:
+            logger.warning('BTRunner: BT5 RETURNING failed')
+
+    def _handle_waiting_transition(self, status) -> None:
+        if status != py_trees.common.Status.FAILURE:
+            return
+        logger.info('BTRunner: BT3 WAITING timeout')
+        unpaid = False
+        if self._has_unpaid_items:
+            try:
+                unpaid = bool(self._has_unpaid_items())
+            except Exception:
+                # Same policy as main_node._has_unpaid_items: unknown → not unpaid → RETURNING.
+                logger.exception('BTRunner: has_unpaid_items callback failed')
+        self.sm.waiting_exit_by_unpaid(unpaid)
+
+    _STATE_TRANSITION_HANDLERS: dict = {
+        'TRACKING': _handle_tracking_transition,
+        'TRACKING_CHECKOUT': _handle_tracking_transition,
+        'SEARCHING': _handle_searching_transition,
+        'GUIDING': _handle_guiding_transition,
+        'RETURNING': _handle_returning_transition,
+        'WAITING': _handle_waiting_transition,
+    }
+
+    _STATE_TO_BT_ATTR: dict[str, str] = {
+        'TRACKING': '_bt_tracking',
+        'TRACKING_CHECKOUT': '_bt_tracking',
+        'SEARCHING': '_bt_searching',
+        'WAITING': '_bt_waiting',
+        'GUIDING': '_bt_guiding',
+        'RETURNING': '_bt_returning',
+    }
 
     def _get_active_bt(self, state: str):
         """현재 SM 상태에 대응하는 leaf BT를 반환."""
-        mapping = {
-            'TRACKING': self._bt_tracking,
-            'TRACKING_CHECKOUT': self._bt_tracking,
-            'SEARCHING': self._bt_searching,
-            'WAITING': self._bt_waiting,
-        }
-        # BT4~BT5: root children의 leaf로 접근
-        children = self._root.children
-        state_map = {
-            'GUIDING': children[3].children[1] if len(children) > 3 else None,
-            'RETURNING': children[4].children[1] if len(children) > 4 else None,
-        }
-        mapping.update(state_map)
-        return mapping.get(state)
+        attr = self._STATE_TO_BT_ATTR.get(state)
+        return getattr(self, attr, None) if attr else None

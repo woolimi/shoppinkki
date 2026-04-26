@@ -10,7 +10,6 @@ BoundaryMonitor 등 위치 의존 컴포넌트가 이 콜백으로 갱신을 받
 from __future__ import annotations
 
 import logging
-import math
 from typing import TYPE_CHECKING, Callable, Optional
 
 import rclpy
@@ -23,6 +22,8 @@ from rclpy.qos import (
     QoSProfile,
     QoSReliabilityPolicy,
 )
+
+from .geometry import quat_to_yaw
 
 if TYPE_CHECKING:
     import rclpy.node
@@ -101,34 +102,29 @@ class LocalizationManager:
     # TF lookup
     # ──────────────────────────────────────────
 
-    def get_live_pose(self) -> tuple[float, float, float]:
-        """TF에서 실시간 위치 조회 (후진 도킹용)."""
+    def _lookup_tf_pose(self) -> Optional[tuple[float, float, float]]:
+        """map → base_footprint TF 조회 결과를 (x, y, yaw)로 반환. 실패 시 None."""
         try:
             t = self._tf_buffer.lookup_transform(
                 'map', self._base_frame, rclpy.time.Time())
-            x = t.transform.translation.x
-            y = t.transform.translation.y
-            q = t.transform.rotation
-            yaw = math.atan2(
-                2.0 * (q.w * q.z + q.x * q.y),
-                1.0 - 2.0 * (q.y * q.y + q.z * q.z))
-            return (x, y, yaw)
-        except Exception:
-            return (self._pos_x, self._pos_y, self._yaw)
-
-    def _update_pos_from_tf(self) -> None:
-        """TF에서 map → base_footprint 변환을 조회하여 위치·방향 갱신."""
-        try:
-            t = self._tf_buffer.lookup_transform(
-                'map', self._base_frame, rclpy.time.Time())
-            self._pos_x = t.transform.translation.x
-            self._pos_y = t.transform.translation.y
-            # quaternion → yaw
-            q = t.transform.rotation
-            siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
-            cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
-            self._yaw = math.atan2(siny_cosp, cosy_cosp)
         except (tf2_ros.LookupException,
                 tf2_ros.ConnectivityException,
                 tf2_ros.ExtrapolationException):
-            pass  # TF 미사용 환경(실물 부팅 초기 등)에서는 amcl_pose 로 갱신
+            return None
+        q = t.transform.rotation
+        yaw = quat_to_yaw(q.x, q.y, q.z, q.w)
+        return (t.transform.translation.x, t.transform.translation.y, yaw)
+
+    def get_live_pose(self) -> tuple[float, float, float]:
+        """TF에서 실시간 위치 조회 (후진 도킹용)."""
+        pose = self._lookup_tf_pose()
+        if pose is None:
+            return (self._pos_x, self._pos_y, self._yaw)
+        return pose
+
+    def _update_pos_from_tf(self) -> None:
+        """TF에서 map → base_footprint 변환을 조회하여 위치·방향 갱신."""
+        pose = self._lookup_tf_pose()
+        if pose is None:
+            return  # TF 미사용 환경(실물 부팅 초기 등)에서는 amcl_pose 로 갱신
+        self._pos_x, self._pos_y, self._yaw = pose
